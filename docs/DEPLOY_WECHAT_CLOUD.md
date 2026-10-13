@@ -32,7 +32,8 @@ flowchart TD
 
 ## 容器配置
 
-- 构建上下文：`backend/`；Dockerfile：`backend/Dockerfile`。
+- Git仓库部署选择分支 `main`，构建目录为仓库根目录（`.`），Dockerfile路径为 `Dockerfile`。根目录入口只打包后端，排除本地环境文件、前端和设计素材。
+- 如使用子目录构建，上下文可设为 `backend/`，使用该目录内的 `Dockerfile`；不要混用根目录Dockerfile与子目录上下文。
 - 容器HTTP端口：8080；监听端口必须与云托管控制台配置一致。应用支持`PORT`环境变量。
 - 健康探测路径：`GET /api/health`，仅表示HTTP服务已运行；数据库与Redis另做连接验证。
 - 起步资源建议：1核/2GB，至少保留1个实例供一期验收；这是运行建议，不是平台默认配置或费用承诺。
