@@ -1,0 +1,110 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "登科喵资料助手",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/categories/index",
+      "style": {
+        "navigationBarTitleText": "资料分类"
+      }
+    },
+    {
+      "path": "pages/favorites/index",
+      "style": {
+        "navigationBarTitleText": "我的收藏"
+      }
+    },
+    {
+      "path": "pages/me/index",
+      "style": {
+        "navigationBarTitleText": "我的",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/search/index",
+      "style": {
+        "navigationBarTitleText": "资料搜索",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/resource/index",
+      "style": {
+        "navigationBarTitleText": "资料详情"
+      }
+    },
+    {
+      "path": "pages/downloads/index",
+      "style": {
+        "navigationBarTitleText": "下载管理"
+      }
+    },
+    {
+      "path": "pages/tools/index",
+      "style": {
+        "navigationBarTitleText": "工具中心"
+      }
+    },
+    {
+      "path": "pages/files/index",
+      "style": {
+        "navigationBarTitleText": "我的文件"
+      }
+    },
+    {
+      "path": "pages/process/index",
+      "style": {
+        "navigationBarTitleText": "资料处理"
+      }
+    },
+    {
+      "path": "pages/vip/index",
+      "style": {
+        "navigationBarTitleText": "高级工具包"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#faf9ff"
+  },
+  "tabBar": {
+    "color": "#a49bb7",
+    "selectedColor": "#783FFF",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "static/tab-0.png",
+        "selectedIconPath": "static/tab-0-active.png"
+      },
+      {
+        "pagePath": "pages/categories/index",
+        "text": "分类",
+        "iconPath": "static/tab-1.png",
+        "selectedIconPath": "static/tab-1-active.png"
+      },
+      {
+        "pagePath": "pages/favorites/index",
+        "text": "收藏",
+        "iconPath": "static/tab-2.png",
+        "selectedIconPath": "static/tab-2-active.png"
+      },
+      {
+        "pagePath": "pages/me/index",
+        "text": "我的",
+        "iconPath": "static/tab-3.png",
+        "selectedIconPath": "static/tab-3-active.png"
+      }
+    ]
+  }
+}

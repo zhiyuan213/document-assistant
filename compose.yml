@@ -1,0 +1,47 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: dengke
+      MYSQL_USER: dengke
+      MYSQL_PASSWORD: ${DB_PASSWORD:-local-development-only}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local-root-only}
+    ports: ['127.0.0.1:3306:3306']
+    volumes: ['mysql-data:/var/lib/mysql']
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h localhost -p$$MYSQL_ROOT_PASSWORD']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ['127.0.0.1:6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  backend:
+    build: ./backend
+    ports: ['127.0.0.1:8080:8080']
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/dengke?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      DB_PASSWORD: ${DB_PASSWORD:-local-development-only}
+      REDIS_HOST: redis
+      DEV_LOGIN: ${DEV_LOGIN:-true}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:5173}
+      WX_APP_ID: ${WX_APP_ID:-}
+      WX_SECRET: ${WX_SECRET:-}
+      CLOUD_SECRET_ID: ${CLOUD_SECRET_ID:-}
+      CLOUD_SECRET_KEY: ${CLOUD_SECRET_KEY:-}
+      CLOUD_REGION: ${CLOUD_REGION:-ap-guangzhou}
+      STORAGE: ${STORAGE:-local}
+      COS_BUCKET: ${COS_BUCKET:-}
+    volumes: ['files:/app/data/files']
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+volumes:
+  mysql-data:
+  files:

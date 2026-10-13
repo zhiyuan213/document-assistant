@@ -1,0 +1,7 @@
+# 使用已在本地编译的JAR，避免重复下载Maven依赖。
+services:
+  backend:
+    image: dengke-doc-assistant:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.local

@@ -1,0 +1,22 @@
+{
+  "name": "登科喵资料助手",
+  "appid": "",
+  "description": "让资料处理更简单",
+  "versionName": "0.1.0",
+  "versionCode": "10",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wx32e637fe68951abc",
+    "setting": {
+      "urlCheck": true
+    },
+    "usingComponents": true
+  },
+  "h5": {
+    "title": "登科喵资料助手"
+  },
+  "uniStatistics": {
+    "enable": false
+  },
+  "vueVersion": "3"
+}

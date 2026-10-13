@@ -1,0 +1,36 @@
+server:
+  port: ${PORT:8080}
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/dengke?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USER:dengke}
+    password: ${DB_PASSWORD:local-development-only}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 100MB
+  sql:
+    init:
+      mode: ${SQL_INIT_MODE:always}
+      schema-locations: classpath:schema.sql
+  mvc:
+    async:
+      request-timeout: 120000
+app:
+  dev-login: ${DEV_LOGIN:false}
+  cors-origin: ${CORS_ORIGIN:http://localhost:5173}
+  storage-dir: ${STORAGE_DIR:./data/files}
+  storage: ${STORAGE:local}
+  free-daily-limit: ${FREE_DAILY_LIMIT:5}
+  wx-app-id: ${WX_APP_ID:}
+  wx-secret: ${WX_SECRET:}
+  cloud-secret-id: ${CLOUD_SECRET_ID:}
+  cloud-secret-key: ${CLOUD_SECRET_KEY:}
+  cloud-region: ${CLOUD_REGION:ap-guangzhou}
+  cos-bucket: ${COS_BUCKET:}
+  seed-demo: ${SEED_DEMO:false}
