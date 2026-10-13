@@ -13,21 +13,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-  redis:
-    image: redis:7-alpine
-    ports: ['127.0.0.1:6379:6379']
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 5s
-      timeout: 3s
-      retries: 10
   backend:
     build: ./backend
     ports: ['127.0.0.1:8080:8080']
     environment:
       DB_URL: jdbc:mysql://mysql:3306/dengke?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       DB_PASSWORD: ${DB_PASSWORD:-local-development-only}
-      REDIS_HOST: redis
       DEV_LOGIN: ${DEV_LOGIN:-true}
       SEED_DEMO: ${SEED_DEMO:-true}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:5173}
@@ -41,7 +32,6 @@ services:
     volumes: ['files:/app/data/files']
     depends_on:
       mysql: { condition: service_healthy }
-      redis: { condition: service_healthy }
 volumes:
   mysql-data:
   files:

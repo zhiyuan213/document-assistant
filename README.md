@@ -1,12 +1,12 @@
 # 登科喵资料助手
 
-面向考试、求职、学习、办公场景的资料检索与文件处理小程序。采用 uni-app + Vue 3、Spring Boot 3、MySQL 8、Redis、PDFBox。根据用户最新确认，界面调整为紫白主题，新增资料搜索、分类、收藏和下载，保留原文件工具。资料平台说明见 [RESOURCE_LIBRARY.md](docs/RESOURCE_LIBRARY.md)。
+面向考试、求职、学习、办公场景的资料检索与文件处理小程序。采用 uni-app + Vue 3、Spring Boot 3、MySQL 8、PDFBox。根据用户最新确认，界面调整为紫白主题，新增资料搜索、分类、收藏和下载，保留原文件工具。资料平台说明见 [RESOURCE_LIBRARY.md](docs/RESOURCE_LIBRARY.md)。
 
-线上部署目标为**微信云托管 + MySQL 8.0**，配套Redis、COS和腾讯云OCR。详细架构、环境变量与发布顺序见 [微信云托管部署说明](docs/DEPLOY_WECHAT_CLOUD.md)。小程序AppID已配置，实际云资源尚未创建。
+线上部署目标为**微信云托管 + MySQL 8.0**，配套COS和腾讯云OCR。详细架构、环境变量与发布顺序见 [微信云托管部署说明](docs/DEPLOY_WECHAT_CLOUD.md)。小程序AppID已配置，实际云资源尚未创建。
 
 ## 已实现
 
-- 微信 code 登录、7天 Redis 会话；H5 本地开发登录（生产默认关闭）。
+- 微信 code 登录、7天 MySQL 会话（仅保存 token 的 SHA-256 摘要）；H5 本地开发登录（生产默认关闭）。
 - 1–20张 JPG/PNG 按顺序转 A4 PDF，支持竖版/横版、标准/高级高清质量。
 - 2–10份 PDF 合并，保留页序、文字与资源，总页数最多200页。
 - PDF 内图片智能压缩；保留文字与页面结构，结果不大于原文件。已压缩文件可能不再缩小。
@@ -46,7 +46,7 @@ pnpm dev:h5 --host 127.0.0.1 --port 5173
 
 ```powershell
 # 也可以只在Docker启动数据库，直接运行已构建的后端
-docker compose up -d mysql redis
+docker compose up -d mysql
 ./scripts/start-backend.ps1
 # 另开终端
 ./scripts/start-frontend.ps1
@@ -59,7 +59,7 @@ SQL源为 `backend/src/main/resources/schema.sql`，独立副本为 `database/in
 ## 微信小程序
 
 1. 填写 `frontend/src/manifest.json` 的 `mp-weixin.appid`，配置后端 `WX_APP_ID` / `WX_SECRET`。
-2. 前端 `.env` 配置 `VITE_API_URL=https://你的接口域名`。后端配置 MySQL、Redis 和可选云凭据。
+2. 前端 `.env` 配置 `VITE_API_URL=https://你的接口域名`。后端配置 MySQL 和可选云凭据。
 3. 执行 `pnpm build:mp-weixin`，微信开发者工具导入 `frontend/dist/build/mp-weixin`。
 4. 在微信后台设置 request / downloadFile 合法域名。真机不能使用电脑的localhost。
 5. 上线关闭 `DEV_LOGIN`，使用生产数据库密码，配置HTTPS和完整隐私政策，并验证登录、上传、OCR与文件打开流程。
@@ -81,6 +81,6 @@ pnpm build:h5
 pnpm build:mp-weixin
 ```
 
-测试采用H2的MySQL兼容模式和模拟Redis会话，覆盖PDF页序与字体资源、压缩后文字、用户隔离、失败退回次数、额度耗尽、高清权益和登录会话过期。云服务及微信真机需要凭据后另行验收。接口说明见 `docs/API.md`。
+测试采用H2的MySQL兼容模式及MySQL登录会话，覆盖PDF页序与字体资源、压缩后文字、用户隔离、失败退回次数、额度耗尽、高清权益和登录会话过期。云服务及微信真机需要凭据后另行验收。接口说明见 `docs/API.md`。
 
 技术参考：[PDFBox 3迁移指南](https://pdfbox.apache.org/3.0/migration.html)、[uni-app Vue 3说明](https://uniapp.dcloud.io/tutorial/vue3-basics)。前端依赖模板来自DCloud官方 `uni-preset-vue` 的vite分支。

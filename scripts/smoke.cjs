@@ -1,4 +1,4 @@
-// 仅针对本地开发用户。真实MySQL/Redis与HTTP接口冒烟验证。
+// 仅针对本地开发用户。真实MySQL与HTTP接口冒烟验证。
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const base = 'http://localhost:8080/api';

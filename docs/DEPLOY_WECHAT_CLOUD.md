@@ -1,6 +1,6 @@
 # 登科喵资料助手：微信云托管 + MySQL 8.0
 
-部署目标为微信小程序前端、微信云托管中的Spring Boot服务、MySQL 8.0、Redis、腾讯COS私有文件桶和腾讯云OCR。小程序AppID已设置为 `wx32e637fe68951abc`。当前代码已经具备容器与环境变量配置；尚未创建云资源或向云端发布。
+部署目标为微信小程序前端、微信云托管中的Spring Boot服务、MySQL 8.0、腾讯COS私有文件桶和腾讯云OCR。小程序AppID已设置为 `wx32e637fe68951abc`。当前代码已经具备容器与环境变量配置；尚未创建云资源或向云端发布。
 
 资料平台升级增加分类、资料、收藏、下载记录和反馈表。已有云环境先执行 `database/migrations/002_resource_library.sql`，生产关闭 `SEED_DEMO`。正式内容需由维护方导入，当前开发环境提供的是原创示例文件。
 
@@ -11,7 +11,6 @@ flowchart TD
   Mini[微信小程序 · uni-app Vue 3] -->|HTTPS /api| Gateway[云托管 HTTPS 服务入口]
   Gateway --> API[微信云托管 · Spring Boot 3 / Java 21]
   API -->|内网 JDBC| DB[(MySQL 8.0 · 用户/文件/任务/权益)]
-  API -->|内网连接| Redis[(Redis · 登录会话)]
   API -->|私有对象存储| COS[腾讯 COS · PDF/TXT结果]
   API --> OCR[腾讯云 OCR]
   API --> WX[微信 code 登录]
@@ -22,7 +21,6 @@ flowchart TD
 | 前端 | 微信开发者工具上传的小程序版本 | 文件选择、工具页面、结果与历史 |
 | 后端 | 微信云托管容器服务，建议服务名`dengke-doc-api` | 登录、PDF处理、OCR调用、文件归属与次数校验 |
 | 数据库 | MySQL 8.0，后端可访问的内网地址 | 持久化用户、任务、OCR记录、文件元信息及权益 |
-| Redis | 后端可访问的内网Redis实例 | 7天登录会话；当前代码依赖Redis，不能直接省略 |
 | 文件 | COS私有桶 | PDF/TXT结果，不使用容器临时磁盘作为生产存储 |
 | OCR | 腾讯云通用文字识别 | 仅后端调用，密钥不传给小程序 |
 
@@ -35,13 +33,17 @@ flowchart TD
 - Git仓库部署选择分支 `main`，构建目录为仓库根目录（`.`），Dockerfile路径为 `Dockerfile`。根目录入口只打包后端，排除本地环境文件、前端和设计素材。
 - 如使用子目录构建，上下文可设为 `backend/`，使用该目录内的 `Dockerfile`；不要混用根目录Dockerfile与子目录上下文。
 - 容器HTTP端口：8080；监听端口必须与云托管控制台配置一致。应用支持`PORT`环境变量。
-- 健康探测路径：`GET /api/health`，仅表示HTTP服务已运行；数据库与Redis另做连接验证。
+- 健康探测路径：`GET /api/health`，仅表示HTTP服务已运行；数据库另做连接验证。
 - 起步资源建议：1核/2GB，至少保留1个实例供一期验收；这是运行建议，不是平台默认配置或费用承诺。
-- JVM当前最大堆768MB；每实例同时最多处理2项任务。实例扩容后，共享MySQL、Redis和COS。
+- JVM当前最大堆768MB；每实例同时最多处理2项任务。实例扩容后，共享MySQL和COS。
 
-云托管中仅部署后端镜像；`compose.yml`用于本机联调，不把MySQL/Redis本地容器作为线上持久化服务。
+云托管中仅部署后端镜像；`compose.yml`用于本机联调，不把MySQL本地容器作为线上持久化服务。
 
 ## 生产环境变量
+
+当前版本已移除 Redis，登录会话存入 MySQL 的 `login_session` 表，7 天过期，数据库仅保存 token 摘要。已导入旧版初始化脚本的环境，升级前执行 `database/migrations/003_mysql_sessions.sql`；新库直接导入最新版 `database/init.sql`。旧 Redis 会话失效，用户需重新登录。
+
+暂未配置 COS 时可设 `STORAGE=local`，`COS_BUCKET` 默认空字符串，不影响启动。本地文件仅适用于联调，容器更新或切换实例可能丢失文件。配置私有桶和凭据后设为 `STORAGE=cos`，本地已有文件不会自动迁入 COS。
 
 模板位于 `deploy/wechat-cloud.env.example`。密码与云密钥只在本地安全文件或云托管环境配置中填写，不提交仓库、不发到聊天、不放前端。
 
@@ -51,7 +53,6 @@ flowchart TD
 | `DEV_LOGIN` | `false` |
 | `DB_URL` | MySQL 8内网JDBC地址、数据库`dengke` |
 | `DB_USER` / `DB_PASSWORD` | 独立应用数据库账号 |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | 内网Redis地址与凭据 |
 | `WX_APP_ID` | `wx32e637fe68951abc` |
 | `WX_SECRET` | 微信AppSecret |
 | `STORAGE` | `cos` |
@@ -62,7 +63,7 @@ flowchart TD
 
 ## 发布顺序
 
-1. 准备MySQL 8.0、Redis和COS私有桶，并确认云托管到数据库/Redis的网络可达。
+1. 准备MySQL 8.0和COS私有桶，并确认云托管到数据库的网络可达。
 2. 创建`dengke`数据库（utf8mb4），执行`database/init.sql`，设置应用账号权限。
 3. 构建并上传后端镜像；配置上表中的环境变量和容器端口8080。
 4. 验证`/api/health`、微信登录、图片转PDF、文件历史、PDF下载和OCR。未配置云密钥时OCR会明确报错。
@@ -73,6 +74,6 @@ flowchart TD
 
 ## 下一阶段
 
-大文件采用“小程序签名上传COS → 创建任务 → 后端异步处理 → 查询任务 → 下载结果”。MySQL保存任务状态，Redis/队列协调处理；新增微信支付回调验签、订单幂等、权益授予、退款及文件过期清理。以上是后续工作，尚未在本版实现。
+大文件采用“小程序签名上传COS → 创建任务 → 后端异步处理 → 查询任务 → 下载结果”。MySQL保存任务状态，任务队列协调处理；新增微信支付回调验签、订单幂等、权益授予、退款及文件过期清理。以上是后续工作，尚未在本版实现。
 
 官方说明：[微信云托管说明](https://cloud.tencent.com/document/product/876/113602)、[云托管常见问题与端口配置](https://cloud.tencent.com/document/faq/1243/59521)。

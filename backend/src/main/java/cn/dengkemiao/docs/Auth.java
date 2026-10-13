@@ -3,7 +3,9 @@ package cn.dengkemiao.docs;
 import java.time.Duration;
 import java.util.*;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -14,11 +16,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Service
 public class Auth {
     private final JdbcTemplate db;
-    private final StringRedisTemplate redis;
     @Value("${app.dev-login}") private boolean dev;
     @Value("${app.wx-app-id}") private String appId;
     @Value("${app.wx-secret}") private String secret;
-    public Auth(JdbcTemplate db, StringRedisTemplate redis) { this.db = db; this.redis = redis; }
+    public Auth(JdbcTemplate db) { this.db = db; }
     public Map<String, Object> login(String code, boolean development) {
         String openId;
         if (development) {
@@ -39,13 +40,19 @@ public class Auth {
         db.update("INSERT INTO app_user(open_id,nickname) VALUES (?,?) ON DUPLICATE KEY UPDATE open_id=VALUES(open_id)", openId, development ? "开发体验用户" : "登科喵用户");
         Long userId = db.queryForObject("SELECT id FROM app_user WHERE open_id=?", Long.class, openId);
         String token = UUID.randomUUID().toString() + UUID.randomUUID();
-        redis.opsForValue().set("session:" + token, userId.toString(), Duration.ofDays(7));
+        db.update("DELETE FROM login_session WHERE expires_at <= CURRENT_TIMESTAMP");
+        db.update("INSERT INTO login_session(token_hash,user_id,expires_at) VALUES (?,?,?)",
+            hash(token), userId, java.sql.Timestamp.from(java.time.Instant.now().plus(Duration.ofDays(7))));
         return Map.of("token", token, "userId", userId, "development", development);
     }
     public long user(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) throw new ApiError(401, "请先登录");
-        String value = redis.opsForValue().get("session:" + authorization.substring(7));
-        if (value == null) throw new ApiError(401, "登录已过期，请重新登录");
-        return Long.parseLong(value);
+        var users = db.queryForList("SELECT user_id FROM login_session WHERE token_hash=? AND expires_at > CURRENT_TIMESTAMP", Long.class, hash(authorization.substring(7)));
+        if (users.isEmpty()) throw new ApiError(401, "登录已过期，请重新登录");
+        return users.get(0);
+    }
+    private static String hash(String token) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8))); }
+        catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }
 }

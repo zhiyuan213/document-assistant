@@ -5,7 +5,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class ApiIntegrationTest {
     @Autowired MockMvc mvc; @Autowired JdbcTemplate db; @Autowired ObjectMapper json;
-    @MockitoBean Auth auth; @MockitoBean StringRedisTemplate redis;
+    @MockitoBean Auth auth;
     @BeforeEach void setup(){
         db.update("DELETE FROM ocr_record");db.update("DELETE FROM file_info");db.update("DELETE FROM file_task");db.update("DELETE FROM user_quota");
         db.update("INSERT INTO app_user(id,open_id,nickname) VALUES(1,'test1','test'),(2,'test2','test') ON DUPLICATE KEY UPDATE nickname='test'");

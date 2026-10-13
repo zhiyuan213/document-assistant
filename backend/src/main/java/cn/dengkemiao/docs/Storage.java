@@ -22,7 +22,11 @@ public class Storage {
         if (!key.matches("[a-f0-9-]+\\.(pdf|txt|doc|docx|xls|xlsx|ppt|pptx|zip)")) throw new ApiError(400, "无效文件标识");
         return Path.of(directory).toAbsolutePath().resolve(key);
     }
-    private COSClient client() { return new COSClient(new BasicCOSCredentials(secretId, secretKey), new ClientConfig(new Region(region))); }
+    private COSClient client() {
+        if (bucket.isBlank() || secretId.isBlank() || secretKey.isBlank() || region.isBlank())
+            throw new ApiError(503, "文件存储尚未配置，请配置 COS 或暂用 local 存储");
+        return new COSClient(new BasicCOSCredentials(secretId, secretKey), new ClientConfig(new Region(region)));
+    }
     public void put(String key, byte[] bytes, String contentType) throws IOException {
         if (mode.equals("cos")) {
             COSClient client = client();

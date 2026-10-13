@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class ResourceIntegrationTest {
     @Autowired MockMvc mvc;@Autowired JdbcTemplate db;@Autowired Storage storage;@Autowired ObjectMapper json;
-    @MockitoBean Auth auth;@MockitoBean StringRedisTemplate redis;
+    @MockitoBean Auth auth;
     String id;
     @BeforeEach void setup() throws Exception {
         db.update("DELETE FROM resource_download");db.update("DELETE FROM resource_favorite");db.update("DELETE FROM resource_item");
