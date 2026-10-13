@@ -1,5 +1,5 @@
 <template>
-  <view class="page home-page" :style="headerPadding(32)">
+  <view class="page home-page" :style="headerPadding(32, true)">
     <view class="home-title">登科喵资料助手</view
     ><view class="home-subtitle">资料搜索 · 分类浏览 · 轻松整理</view>
     <view class="search-bar"
