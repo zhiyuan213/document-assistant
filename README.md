@@ -1,5 +1,7 @@
 # 登科喵资料助手
 
+微信开发者工具可导入仓库根目录；`project.config.json` 已将小程序入口设为 `frontend/dist/build/mp-weixin/`。首次打开或更新前端后，先在仓库根目录运行 `npm ci --prefix frontend`（首次安装），再运行 `npm run build:mp-weixin --prefix frontend`，然后在开发者工具中重新编译。构建产物不提交 Git。开发者个人配置 `project.private.config.json` 不提交。
+
 面向考试、求职、学习、办公场景的资料检索与文件处理小程序。采用 uni-app + Vue 3、Spring Boot 3、MySQL 8、PDFBox。根据用户最新确认，界面调整为紫白主题，新增资料搜索、分类、收藏和下载，保留原文件工具。资料平台说明见 [RESOURCE_LIBRARY.md](docs/RESOURCE_LIBRARY.md)。
 
 线上部署目标为**微信云托管 + MySQL 8.0**，配套COS和腾讯云OCR。详细架构、环境变量与发布顺序见 [微信云托管部署说明](docs/DEPLOY_WECHAT_CLOUD.md)。小程序AppID已配置，实际云资源尚未创建。
