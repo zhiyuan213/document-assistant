@@ -17,6 +17,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:dengke;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","spring.datasource.username=sa","spring.datasource.password=","app.storage-dir=target/test-files","app.free-daily-limit=2"})
 @AutoConfigureMockMvc
 class ApiIntegrationTest {
+    @Test void cloudProbeIsPublicAndUnknownPathsReturn404() throws Exception {
+        mvc.perform(get("/__tcb_probe__")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"));
+        mvc.perform(get("/api/health")).andExpect(status().isOk());
+        mvc.perform(get("/unknown-path")).andExpect(status().isNotFound()).andExpect(jsonPath("$.message").value("请求路径不存在"));
+    }
     @Autowired MockMvc mvc; @Autowired JdbcTemplate db; @Autowired ObjectMapper json;
     @MockitoBean Auth auth;
     @BeforeEach void setup(){
