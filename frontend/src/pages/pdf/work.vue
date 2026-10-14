@@ -31,6 +31,7 @@ import {onLoad,onUnload,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-
 import PdfIcon from '../../components/PdfIcon.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
 import {pdfRequest,submitPdf,savePdf} from '../../lib/pdf-api'
+import {pollPdfJob} from '../../lib/pdf-job.mjs'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),quota=ref(null),stagePercent=ref(0),stage=ref('正在上传文件…')
 const billingEnabled=ref(null)
 const splitMode=ref('pages'),ranges=ref(''),orientation=ref('portrait'),format=ref('jpg'),watermark=ref(''),password=ref(''),confirmation=ref('')
@@ -67,7 +68,8 @@ function chooseWatermark(){uni.chooseImage({count:1,success:r=>{const f=r.tempFi
 async function run(){if(busy.value)return;error.value='';if(tool.value.id==='encrypt'&&password.value!==confirmation.value){error.value='两次密码不一致';return}if(tool.value.id==='merge'&&selected.value.length<2){error.value='请选择至少两个PDF';return}if(tool.value.id==='split'&&splitMode.value==='ranges'&&!ranges.value.trim()){error.value='请输入页码范围';return}
  busy.value=true;stagePercent.value=0;stage.value='正在上传文件…'
  try{const imageMark=tool.value.id==='watermark'&&watermarkMode.value==='image';if(imageMark&&!watermarkFile.value)throw new Error('请选择水印图片');const created=await submitPdf(tool.value.id,imageMark?[...selected.value,watermarkFile.value]:selected.value,{ranges:splitMode.value==='ranges'?ranges.value:'',orientation:orientation.value,format:format.value,text:watermark.value,password:password.value,compression:compression.value,imageOutput:imageOutput.value,watermarkMode:watermarkMode.value});password.value='';confirmation.value='';
-  while(alive){const job=await pdfRequest('/jobs/'+created.id);stagePercent.value=job.progress;stage.value=job.status==='queued'?'文件已上传，等待处理…':'正在处理文件…';if(job.status==='failed')throw new Error(job.error_message);if(job.status==='completed'){result.value=job;selected.value=[];break}await new Promise(resolve=>setTimeout(resolve,1200))}
+  const job=await pollPdfJob(()=>pdfRequest('/jobs/'+created.id),{active:()=>alive,onProgress:job=>{stagePercent.value=job.progress;stage.value=job.status==='syncing'?'文件已上传，正在同步任务状态…':job.status==='queued'?'文件已上传，等待处理…':'正在处理文件…'}})
+  if(job){result.value=job;selected.value=[]}
  }catch(e){error.value=e.message;if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}finally{busy.value=false;if(alive)await refreshQuota()}}
 async function save(){if(saving.value)return;saving.value=true;try{await savePdf(result.value)}catch(e){error.value=e.message||'保存失败，请重试'}finally{saving.value=false}}
 function again(){result.value=null;error.value=''}

@@ -23,7 +23,15 @@ export async function visitor() {
 export function pdfConfig() { return raw('/config') }
 export async function pdfRequest(path, method = 'GET', data) {
   await visitor()
-  try { return await raw(path, method, data) } catch (e) { if (e.status !== 401) throw e; uni.removeStorageSync(tokenKey); await visitor(); return raw(path, method, data) }
+  try { return await raw(path, method, data) } catch (e) {
+    if (e.status !== 401) throw e
+    // A transient lookup failure must not replace the identity owning an existing job.
+    await new Promise(resolve => setTimeout(resolve, 600))
+    try { return await raw(path, method, data) } catch (retry) {
+      if (retry.status !== 401 || path.startsWith('/jobs/')) throw retry
+      uni.removeStorageSync(tokenKey); await visitor(); return raw(path, method, data)
+    }
+  }
 }
 async function bytes(path) {
   // #ifdef H5
