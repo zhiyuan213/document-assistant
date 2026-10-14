@@ -61,13 +61,25 @@ export async function savePdf(job) {
   const object = URL.createObjectURL(await response.blob()), a = document.createElement('a'); a.href = object; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(object), 30000)
   // #endif
   // #ifdef MP-WEIXIN
-  const result = await new Promise((resolve, reject) => uni.downloadFile({ url, header, success: resolve, fail: e => reject(networkError(e)) }))
-  if (result.statusCode !== 200) throw new Error('文件已过期或下载失败')
   const path = wx.env.USER_DATA_PATH + '/dengke-result-' + job.id + '.' + job.extension
   const fs = wx.getFileSystemManager()
   let exists = false
   try { fs.accessSync(path); exists = true } catch {}
-  if (!exists) await new Promise((resolve, reject) => fs.copyFile({ srcPath: result.tempFilePath, destPath: path, success: resolve, fail: e => reject(fileError('保存到手机', e)) }))
+  if (!exists) {
+    // Download to a named file directly; ZIP is shared rather than opened as a document.
+    let result
+    try { result = await new Promise((resolve, reject) => uni.downloadFile({ url, header, filePath: path, timeout: 120000, success: resolve, fail: reject })) }
+    catch {
+      // request and downloadFile have separate domain lists in WeChat.
+      const response = await new Promise((resolve, reject) => uni.request({ url, header, responseType: 'arraybuffer', timeout: 120000, success: resolve, fail: e => reject(networkError(e)) }))
+      if (response.statusCode !== 200) throw new Error(response.statusCode === 410 ? '服务器临时文件已清理，请重新处理' : response.statusCode === 404 ? '结果已过期或不存在，请重新处理' : '下载失败（HTTP ' + response.statusCode + '），请重试')
+      await new Promise((resolve, reject) => fs.writeFile({ filePath: path, data: response.data, success: resolve, fail: e => reject(fileError('保存文件', e)) }))
+      return { path, name, extension: job.extension }
+    }
+    if (result.statusCode !== 200) throw new Error(result.statusCode === 410 ? '服务器临时文件已清理，请重新处理' : result.statusCode === 404 ? '结果已过期或不存在，请重新处理' : '下载失败（HTTP ' + result.statusCode + '），请重试')
+    const downloaded = result.filePath || result.tempFilePath
+    if (downloaded !== path) await new Promise((resolve, reject) => fs.copyFile({ srcPath: downloaded, destPath: path, success: resolve, fail: e => reject(fileError('保存文件', e)) }))
+  }
   return { path, name, extension: job.extension }
   // #endif
 }

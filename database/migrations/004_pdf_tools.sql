@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS pdf_tool_job (
  id CHAR(36) PRIMARY KEY, visitor_id CHAR(36) NOT NULL, tool VARCHAR(24) NOT NULL,
  status VARCHAR(16) NOT NULL, progress INT NOT NULL DEFAULT 0, quota_date DATE NOT NULL,
  extension VARCHAR(8), size_bytes BIGINT, error_message VARCHAR(256),
- expires_at TIMESTAMP NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ expires_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
  INDEX idx_pdf_job_expiry(expires_at), FOREIGN KEY(visitor_id) REFERENCES pdf_visitor(id)
 );
 CREATE TABLE IF NOT EXISTS pdf_credit_balance (

@@ -57,13 +57,13 @@ public class PdfToolController {
     private Path resultPath(String id){return Path.of(directory).toAbsolutePath().resolve(id+".bin");}
     private void process(String id,String owner,LocalDate day,String tool,List<byte[]> content,String name,Map<String,String> options){
         try {
-            db.update("UPDATE pdf_tool_job SET status='processing',progress=35 WHERE id=?",id);
+            db.update("UPDATE pdf_tool_job SET status='processing',progress=35,expires_at=expires_at WHERE id=?",id);
             var result=tools.run(tool,content,name,options);if(result.bytes().length>100*1024*1024)throw new ApiError(400,"输出文件超过100MB，请拆分处理");
             Files.createDirectories(resultPath(id).getParent());Files.write(resultPath(id),result.bytes());
             db.update("UPDATE pdf_tool_job SET status='completed',progress=100,extension=?,size_bytes=?,expires_at=TIMESTAMPADD(MINUTE,30,CURRENT_TIMESTAMP) WHERE id=?",result.extension(),result.bytes().length,id);
         } catch(Exception e) {try{Files.deleteIfExists(resultPath(id));}catch(IOException ignored){}
             String message=e instanceof ApiError?e.getMessage():"文件处理失败，请检查文件格式或是否损坏";
-            db.update("UPDATE pdf_tool_job SET status='failed',error_message=? WHERE id=?",message,id);refund(owner,day);
+            db.update("UPDATE pdf_tool_job SET status='failed',error_message=?,expires_at=expires_at WHERE id=?",message,id);refund(owner,day);
         } finally {options.clear();content.clear();}
     }
     private Map<String,Object> owned(String id,String owner){var rows=db.queryForList("SELECT id,tool,status,progress,extension,size_bytes,error_message,expires_at FROM pdf_tool_job WHERE id=? AND visitor_id=? AND expires_at>CURRENT_TIMESTAMP",id,owner);if(rows.isEmpty())throw new ApiError(404,"结果已过期或不存在，请重新处理");return rows.get(0);}

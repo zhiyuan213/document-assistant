@@ -29,3 +29,30 @@ test('download preparation reuses existing local files and does not share automa
     assert.equal(ready.path, '/test/dengke-result-same-job.zip'); assert.equal(copied, false); assert.equal(shared, false)
   } finally { globalThis.wx = previousWx; globalThis.uni = previousUni }
 })
+
+test('ZIP download writes directly to a named local ZIP', async () => {
+  const oldWx = globalThis.wx, oldUni = globalThis.uni
+  let downloaded
+  globalThis.wx = { env: { USER_DATA_PATH: '/test' }, getFileSystemManager: () => ({ accessSync() { throw Error('missing') }, copyFile() { assert.fail('direct download should not be copied') } }) }
+  globalThis.uni = { getStorageSync: () => 'test-token', downloadFile(options) { downloaded = options; options.success({ statusCode: 200, filePath: options.filePath }) } }
+  try { const ready = await savePdf({ id: 'zip-job', extension: 'zip' }); assert.equal(downloaded.filePath, ready.path); assert.ok(ready.path.endsWith('.zip')); assert.equal(downloaded.header.Authorization, 'Bearer test-token') }
+  finally { globalThis.wx = oldWx; globalThis.uni = oldUni }
+})
+
+test('failed download transport falls back to binary request and writes ZIP bytes', async () => {
+  const oldWx = globalThis.wx, oldUni = globalThis.uni
+  const data = Uint8Array.from([80,75,3,4]).buffer
+  let written
+  globalThis.wx = { env: { USER_DATA_PATH: '/test' }, getFileSystemManager: () => ({ accessSync() { throw Error('missing') }, writeFile(options) { written = options; options.success({}) } }) }
+  globalThis.uni = { getStorageSync: () => 'test-token', downloadFile(options) { options.fail({ errMsg: 'url not in domain list' }) }, request(options) { assert.equal(options.responseType, 'arraybuffer'); options.success({ statusCode: 200, data }) } }
+  try { const ready = await savePdf({ id: 'fallback-job', extension: 'zip' }); assert.equal(written.filePath, ready.path); assert.equal(written.data, data) }
+  finally { globalThis.wx = oldWx; globalThis.uni = oldUni }
+})
+
+test('expired fallback response is never saved as a ZIP', async () => {
+  const oldWx = globalThis.wx, oldUni = globalThis.uni
+  globalThis.wx = { env: { USER_DATA_PATH: '/test' }, getFileSystemManager: () => ({ accessSync() { throw Error('missing') }, writeFile() { assert.fail('must not write error response') } }) }
+  globalThis.uni = { getStorageSync: () => 'test-token', downloadFile(options) { options.fail({}) }, request(options) { options.success({ statusCode: 410, data: new ArrayBuffer(0) }) } }
+  try { await assert.rejects(savePdf({ id: 'expired-job', extension: 'zip' }), /临时文件已清理/) }
+  finally { globalThis.wx = oldWx; globalThis.uni = oldUni }
+})
