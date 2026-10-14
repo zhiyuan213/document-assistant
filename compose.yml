@@ -19,6 +19,7 @@ services:
     environment:
       DB_URL: jdbc:mysql://mysql:3306/dengke?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       DB_PASSWORD: ${DB_PASSWORD:-local-development-only}
+      PDF_BILLING_ENABLED: ${PDF_BILLING_ENABLED:-false}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:5173}
     volumes: ['files:/app/data/pdf-temp']
     depends_on:

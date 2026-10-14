@@ -15,7 +15,7 @@
       <view v-if="tool.id==='images'" class="options"><view class="option-title">输出方式</view><view class="choices"><text :class="{active:imageOutput==='merged'}" @click="imageOutput='merged'">合成一个 PDF</text><text :class="{active:imageOutput==='separate'}" @click="imageOutput='separate'">每张一个 PDF</text></view></view>
       <view v-if="tool.id==='watermark'" class="options"><view class="choices"><text :class="{active:watermarkMode==='text'}" @click="watermarkMode='text'">文字水印</text><text :class="{active:watermarkMode==='image'}" @click="watermarkMode='image'">图片水印</text></view><input v-if="watermarkMode==='text'" v-model="watermark" maxlength="40" placeholder="输入水印文字，最多40字"/><view v-else class="pdf-tip" @click="chooseWatermark">{{watermarkFile?'已选择水印图片，点击更换':'点击选择 JPG / PNG 水印图片'}}</view></view>
       <view v-if="['encrypt','decrypt'].includes(tool.id)" class="options"><view class="option-title">{{tool.id==='encrypt'?'设置密码':'输入有效密码'}}</view><input v-model="password" password maxlength="64" placeholder="请输入密码"/><input v-if="tool.id==='encrypt'" v-model="confirmation" password placeholder="再次输入密码"/></view>
-      <view class="free-tip">{{ quota === null ? '每日免费处理 1 次' : `今日免费剩余 ${quota} 次` }} · 失败不扣次数</view>
+      <view class="free-tip">{{ billingEnabled === false ? '免费使用 · 不限处理次数' : quota === null ? '正在获取使用状态…' : `今日免费剩余 ${quota} 次 · 失败不扣次数` }}</view>
       <button class="pdf-primary" :disabled="!selected.length" @click="run">开始{{tool.id==='merge'?'合并':tool.id==='split'?'拆分':'处理'}}</button>
       <view class="assurance"><view><text>▤</text>格式处理</view><view><text>ϟ</text>无需注册</view><view><text>✓</text>临时存储</view></view>
       <view class="pdf-tip">文件仅用于本次处理，结果 30 分钟后自动删除。请及时保存到手机。密码不写入数据库。</view>
@@ -32,6 +32,7 @@ import PdfIcon from '../../components/PdfIcon.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
 import {pdfRequest,submitPdf,savePdf} from '../../lib/pdf-api'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),quota=ref(null),stagePercent=ref(0),stage=ref('正在上传文件…')
+const billingEnabled=ref(null)
 const splitMode=ref('pages'),ranges=ref(''),orientation=ref('portrait'),format=ref('jpg'),watermark=ref(''),password=ref(''),confirmation=ref('')
 const compression=ref('standard'),imageOutput=ref('merged'),watermarkMode=ref('text'),watermarkFile=ref(null),compressionLevels=[{id:'light',title:'轻量 · 高清'},{id:'standard',title:'标准'},{id:'strong',title:'强力 · 小文件'}]
 const pickerLabel=computed(()=>{
@@ -48,7 +49,7 @@ onUnload(()=>{alive=false;password.value='';confirmation.value=''})
 onShareAppMessage(()=>pdfShare(tool.value));onAddToFavorites(()=>({title:tool.value.title,query:'tool='+tool.value.id}))
 function size(n){return n>1024*1024?(n/1024/1024).toFixed(1)+' MB':Math.ceil((n||0)/1024)+' KB'}
 function favorite(){liked.value=toggleFavorite(tool.value.id).includes(tool.value.id);uni.showToast({title:liked.value?'已收藏常用工具':'已取消收藏',icon:'none'})}
-async function refreshQuota(){try{quota.value=(await pdfRequest('/quota')).remaining}catch(e){error.value=e.message}}
+async function refreshQuota(){try{const r=await pdfRequest('/quota');quota.value=r.remaining;billingEnabled.value=r.billingEnabled!==false}catch(e){error.value=e.message}}
 function choose(){
  const max=tool.value.id==='merge'?10:tool.value.id==='images'?20:1
  const success=r=>{const files=r.tempFiles.map(f=>({path:f.path||f.tempFilePath,name:f.name||('image.'+(f.path?.split('.').pop()||'jpg')),size:f.size}));if(files.some(f=>f.size>20*1024*1024)){uni.showToast({title:'单个文件不能超过20MB',icon:'none'});return}selected.value=max===1?files.slice(0,1):[...selected.value,...files].slice(0,max);error.value=''}

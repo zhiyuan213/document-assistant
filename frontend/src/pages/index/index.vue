@@ -2,7 +2,7 @@
   <view class="pdf-home" :style="headerPadding(20,true)">
     <view class="home-actions"><button open-type="share">↗ 分享</button><button @click="collectApp">☆ 收藏</button></view>
     <view class="home-hero"><view><view class="brand-title">登科喵PDF</view><view class="brand-tag">简单 · 高效 · 安全</view><view class="brand-desc">无需注册，选好文件即可处理。<br/>结果下载到手机，30分钟后自动清理。</view></view><image src="/static/brand/pdf-cat.png" mode="aspectFit"/></view>
-    <view class="daily-line"><text>每日免费处理 1 次</text><text @click="credits">更多次数 ›</text></view>
+    <view class="daily-line"><text>{{billingEnabled===false?'免费使用 · 不限次数':billingEnabled===true?'每日免费处理 1 次':'PDF 文件处理工具'}}</text><text v-if="billingEnabled===true" @click="credits">更多次数 ›</text></view>
     <view class="tool-grid"><view v-for="tool in pdfTools.slice(0,9)" :key="tool.id" @click="openPdfTool(tool.id)"><PdfIcon :label="tool.label" :color="tool.color"/><text>{{tool.title}}</text></view></view>
     <view class="more-tools" @click="allTools">PDF 解密 · 常用收藏 · 全部工具 ›</view>
     <view v-if="saved.length" class="saved-line"><text>常用工具</text><text v-for="id in saved.slice(0,3)" :key="id" @click="openPdfTool(id)">{{pdfTools.find(t=>t.id===id)?.title}}</text></view>
@@ -16,7 +16,10 @@ import {onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
 import {pdfTools,openPdfTool,favorites,pdfShare} from '../../lib/pdf-tools'
 import {headerPadding} from '../../lib/layout'
+import {pdfConfig} from '../../lib/pdf-api'
 const saved=ref([])
+const billingEnabled=ref(null)
+onShow(async()=>{try{billingEnabled.value=(await pdfConfig()).billingEnabled!==false}catch{billingEnabled.value=null}})
 onShow(()=>saved.value=favorites());onShareAppMessage(()=>pdfShare());onAddToFavorites(()=>({title:'登科喵PDF · 常用PDF工具'}))
 function allTools(){uni.switchTab({url:'/pages/tools/index'})}
 function credits(){uni.navigateTo({url:'/pages/pdf/credits'})}

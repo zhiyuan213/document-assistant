@@ -15,9 +15,21 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:pdf-tools;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","spring.datasource.username=sa","spring.datasource.password=","PDF_TEMP_DIR=target/pdf-test-results"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:pdf-tools;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","spring.datasource.username=sa","spring.datasource.password=","PDF_TEMP_DIR=target/pdf-test-results","PDF_BILLING_ENABLED=true"})
 @AutoConfigureMockMvc
 class PdfToolApiTest {
+    @Test void disabledBillingAllowsRepeatedJobsWithoutChangingExistingQuota()throws Exception {
+        String a=token();byte[] source=new PdfService().images(List.of(PdfServiceTest.image()),false,false);
+        String first=start(a,"compress",source);waitJob(first,a,"completed");
+        org.springframework.test.util.ReflectionTestUtils.setField(controller,"billingEnabled",false);
+        try {
+            mvc.perform(get("/api/pdf/config")).andExpect(jsonPath("$.billingEnabled").value(false));
+            mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.unlimited").value(true));
+            for(int i=0;i<2;i++)waitJob(start(a,"compress",source),a,"completed");
+            waitJob(start(a,"compress",new byte[]{1,2}),a,"failed");
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(controller,"billingEnabled",true);}
+        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.remaining").value(0));
+    }
     @Test void healthStaysPublicAndLegacyRoutesAreGone()throws Exception {
         mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"));
         mvc.perform(get("/__tcb_probe__")).andExpect(status().isOk());

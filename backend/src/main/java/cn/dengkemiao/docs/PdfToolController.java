@@ -26,6 +26,7 @@ public class PdfToolController {
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4));
     private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt");
     @Value("${PDF_TEMP_DIR:./data/pdf-temp}") private String directory;
+    @Value("${PDF_BILLING_ENABLED:false}") private boolean billingEnabled;
     public PdfToolController(JdbcTemplate db,PdfTools tools,PlatformTransactionManager manager){this.db=db;this.tools=tools;this.tx=new TransactionTemplate(manager);}
     private LocalDate today(){return LocalDate.now(ZoneId.of("Asia/Shanghai"));}
     private String visitor(String header) {
@@ -35,17 +36,18 @@ public class PdfToolController {
     }
     private static String hash(String value){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     @PostMapping("/visitor") public Map<String,Object> create(){String id=UUID.randomUUID().toString(),token=UUID.randomUUID().toString()+UUID.randomUUID();db.update("INSERT INTO pdf_visitor(id,token_hash) VALUES (?,?)",id,hash(token));return Map.of("token",token);}
-    @GetMapping("/config") public Map<String,Object> config(){return Map.of("dailyFree",1,"retentionMinutes",30,"paymentEnabled",false,"adEnabled",false,"packages",List.of(Map.of("id","six","priceFen",600,"credits",6),Map.of("id","eighteen","priceFen",1200,"credits",18)));}
-    @GetMapping("/quota") public Map<String,Object> quota(@RequestHeader(value="Authorization",required=false)String header){String id=visitor(header);var counts=db.queryForList("SELECT used_count FROM pdf_daily_quota WHERE visitor_id=? AND quota_date=?",Integer.class,id,today());return Map.of("remaining",counts.isEmpty()?1:Math.max(0,1-counts.get(0)),"resetTimezone","Asia/Shanghai");}
+    @GetMapping("/config") public Map<String,Object> config(){return Map.of("billingEnabled",billingEnabled,"dailyFree",1,"retentionMinutes",30,"paymentEnabled",false,"adEnabled",false,"packages",List.of(Map.of("id","six","priceFen",600,"credits",6),Map.of("id","eighteen","priceFen",1200,"credits",18)));}
+    @GetMapping("/quota") public Map<String,Object> quota(@RequestHeader(value="Authorization",required=false)String header){String id=visitor(header);if(!billingEnabled)return Map.of("billingEnabled",false,"unlimited",true,"remaining",-1,"resetTimezone","Asia/Shanghai");var counts=db.queryForList("SELECT used_count FROM pdf_daily_quota WHERE visitor_id=? AND quota_date=?",Integer.class,id,today());return Map.of("billingEnabled",true,"unlimited",false,"remaining",counts.isEmpty()?1:Math.max(0,1-counts.get(0)),"resetTimezone","Asia/Shanghai");}
     private void reserve(String id,LocalDate day){tx.executeWithoutResult(status->{db.update("INSERT INTO pdf_daily_quota(visitor_id,quota_date,used_count) VALUES (?,?,0) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)",id,day);if(db.update("UPDATE pdf_daily_quota SET used_count=used_count+1 WHERE visitor_id=? AND quota_date=? AND used_count<1",id,day)!=1)throw new ApiError(402,"今日免费次数已用完，可购买次数或观看广告；支付与广告暂未开通");});}
-    private void refund(String id,LocalDate day){db.update("UPDATE pdf_daily_quota SET used_count=GREATEST(0,used_count-1) WHERE visitor_id=? AND quota_date=?",id,day);}
+    private void refund(String id,LocalDate day){if(day.equals(LocalDate.ofEpochDay(0)))return;db.update("UPDATE pdf_daily_quota SET used_count=GREATEST(0,used_count-1) WHERE visitor_id=? AND quota_date=?",id,day);}
     @PostMapping(value="/jobs",consumes="multipart/form-data") public Map<String,Object> submit(@RequestHeader(value="Authorization",required=false)String header,@RequestParam String tool,@RequestParam("files")List<MultipartFile> files,@RequestParam Map<String,String> params) throws IOException {
         String owner=visitor(header);if(!TOOLS.contains(tool))throw new ApiError(400,"未知PDF工具");
         if(files.isEmpty()||files.size()>20)throw new ApiError(400,"选择1至20个文件");
         List<byte[]> content=new ArrayList<>();long total=0;
         for(var file:files){if(file.isEmpty()||file.getSize()>20*1024*1024)throw new ApiError(400,"每个文件需小于20MB且不能为空");total+=file.getSize();if(total>60*1024*1024)throw new ApiError(400,"总文件大小不能超过60MB");content.add(file.getBytes());}
         if(workers.getQueue().remainingCapacity()==0)throw new ApiError(429,"当前处理繁忙，请稍后重试");
-        LocalDate day=today();reserve(owner,day);String id=UUID.randomUUID().toString();
+        // Epoch date means no quota was reserved, including when cleaning jobs after a config change.
+        LocalDate day=billingEnabled?today():LocalDate.ofEpochDay(0);if(billingEnabled)reserve(owner,day);String id=UUID.randomUUID().toString();
         try {
             db.update("INSERT INTO pdf_tool_job(id,visitor_id,tool,status,progress,quota_date,expires_at) VALUES (?,?,?,'queued',10,?,?)",id,owner,tool,day,java.sql.Timestamp.from(Instant.now().plusSeconds(1800)));
             String name=Optional.ofNullable(files.get(0).getOriginalFilename()).orElse("input");var options=new HashMap<>(params);options.remove("tool");

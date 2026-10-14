@@ -20,6 +20,7 @@ export async function visitor() {
   if (!creating) creating = raw('/visitor', 'POST').then(r => uni.setStorageSync(tokenKey, r.token)).finally(() => { creating = null })
   await creating
 }
+export function pdfConfig() { return raw('/config') }
 export async function pdfRequest(path, method = 'GET', data) {
   await visitor()
   try { return await raw(path, method, data) } catch (e) { if (e.status !== 401) throw e; uni.removeStorageSync(tokenKey); await visitor(); return raw(path, method, data) }
