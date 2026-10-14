@@ -69,10 +69,10 @@ public class PdfService {
             result.save(out); return out.toByteArray();
         }
     }
-    private void validate(PDDocument doc) { if (doc.isEncrypted()) throw new ApiError(400,"请先解除PDF密码"); if (doc.getNumberOfPages()>200) throw new ApiError(400,"单个PDF最多支持200页"); }
+    private void validate(PDDocument doc) { if (doc.isEncrypted()) throw new ApiError(400,"此PDF带密码，请先使用“PDF 解密”工具解密后再处理"); if (doc.getNumberOfPages()>200) throw new ApiError(400,"单个PDF最多支持200页"); }
     private PDDocument load(byte[] bytes) {
         try { return Loader.loadPDF(bytes); }
-        catch (org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException e) { throw new ApiError(400,"请先解除PDF密码"); }
+        catch (org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException e) { throw new ApiError(400,"此PDF带密码，请先使用“PDF 解密”工具解密后再处理"); }
         catch (IOException e) { throw new ApiError(400,"PDF文件无效或已损坏"); }
     }
     public BufferedImage readImage(byte[] bytes) throws IOException {

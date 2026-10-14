@@ -1,9 +1,11 @@
 <template>
   <view class="pdf-work">
     <view class="tool-actions"><button open-type="share">分享 ↗</button><button @click="favorite">{{ liked ? '★ 已收藏' : '☆ 收藏工具' }}</button></view>
+    <view v-if="error" class="error-message" role="alert">{{error}}</view>
     <template v-if="!busy && !result">
       <view class="intro"><PdfIcon :label="tool.label" :color="tool.color"/><view class="intro-title">{{ tool.title }}</view><text>{{ tool.hint }}</text></view>
       <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? (['merge','images'].includes(tool.id) ? '继续添加文件' : '更换文件') : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
+      <view v-if="tool.id==='merge'" class="pdf-tip">带密码的 PDF 无法直接合并，请先使用“PDF 解密”，再选择解密后的文件合并。<text class="decrypt-link" @click="uni.navigateTo({url:'/pages/pdf/work?tool=decrypt'})">去解密 ›</text></view>
       <!-- #ifdef MP-WEIXIN -->
       <view v-if="tool.id !== 'images'" class="pdf-tip">文件从微信聊天中选择。手机里的 PDF / Word 请先发送给“文件传输助手”，再从该聊天选择文件。选择文件不会向聊天发送消息。</view>
       <!-- #endif -->
@@ -22,7 +24,6 @@
     </template>
     <view v-else-if="busy" class="processing"><image src="/static/brand/pdf-cat.png" mode="aspectFit"/><view class="progress-circle">{{ stagePercent === 0 ? '上传中' : stagePercent+'%' }}</view><view class="intro-title">{{ stage }}</view><text class="muted">进度反映处理阶段，复杂文件请耐心等待</text><view class="pdf-tip">{{ selected[0]?.name }}<br/>请保持页面打开，处理后及时下载</view></view>
     <view v-else class="result"><view class="success-mark">✓</view><view class="intro-title">处理完成！</view><view class="muted">结果可下载，30 分钟后自动删除</view><view class="result-file"><PdfIcon :label="result.extension.toUpperCase()" :color="tool.color"/><view><text>登科喵结果.{{result.extension}}</text><view class="muted">{{size(result.size_bytes)}}</view></view></view><button class="pdf-primary" :loading="saving" @click="save">下载文件</button><button v-if="preparedFile" class="pdf-primary" @click="openPrepared">{{preparedFile.extension==='zip'?'发送 / 保存到微信':'打开文件'}}</button><view v-if="preparedFile" class="muted">{{preparedFile.extension==='zip'?'可发送到文件传输助手，再保存或解压':'打开后使用右上角菜单保存或分享'}}</view><button class="pdf-secondary" @click="again">再处理一个</button><button class="pdf-secondary" @click="openTools">转换其他格式</button><button class="delete-result" @click="remove">立即删除服务器结果</button></view>
-    <view v-if="error" class="error-message">{{error}}</view>
   </view>
 </template>
 <script setup>
@@ -51,7 +52,7 @@ onUnload(()=>{alive=false;password.value='';confirmation.value=''})
 onShareAppMessage(()=>pdfShare(tool.value));onAddToFavorites(()=>({title:tool.value.title,query:'tool='+tool.value.id}))
 function size(n){return n>1024*1024?(n/1024/1024).toFixed(1)+' MB':Math.ceil((n||0)/1024)+' KB'}
 function favorite(){liked.value=toggleFavorite(tool.value.id).includes(tool.value.id);uni.showToast({title:liked.value?'已收藏常用工具':'已取消收藏',icon:'none'})}
-async function refreshQuota(){try{const r=await pdfRequest('/quota');quota.value=r.remaining;billingEnabled.value=r.billingEnabled!==false}catch(e){error.value=e.message}}
+async function refreshQuota(){try{const r=await pdfRequest('/quota');quota.value=r.remaining;billingEnabled.value=r.billingEnabled!==false}catch(e){if(!error.value)error.value=e.message}}
 function choose(){
  const max=tool.value.id==='merge'?10:tool.value.id==='images'?20:1
  const success=r=>{const files=r.tempFiles.map(f=>({path:f.path||f.tempFilePath,name:f.name||('image.'+(f.path?.split('.').pop()||'jpg')),size:f.size}));if(files.some(f=>f.size>20*1024*1024)){uni.showToast({title:'单个文件不能超过20MB',icon:'none'});return}selected.value=max===1?files.slice(0,1):[...selected.value,...files].slice(0,max);error.value=''}

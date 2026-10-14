@@ -18,6 +18,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:pdf-tools;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","spring.datasource.username=sa","spring.datasource.password=","spring.datasource.hikari.maximum-pool-size=1","PDF_TEMP_DIR=target/pdf-test-results","PDF_BILLING_ENABLED=true"})
 @AutoConfigureMockMvc
 class PdfToolApiTest {
+    @Test void failedJobsPreserveExpiryEvenWithLegacyAutoUpdateColumn()throws Exception {
+        db.execute("ALTER TABLE pdf_tool_job ALTER COLUMN expires_at SET ON UPDATE CURRENT_TIMESTAMP");
+        try {
+            String a=token();String id=start(a,"compress",new byte[]{1,2,3});waitJob(id,a,"failed");
+            mvc.perform(get("/api/pdf/jobs/"+id).header("Authorization",a)).andExpect(status().isOk()).andExpect(jsonPath("$.error_message").value("PDF文件无效或已损坏"));
+            assertTrue(db.queryForObject("SELECT TIMESTAMPDIFF(SECOND,CURRENT_TIMESTAMP,expires_at) FROM pdf_tool_job WHERE id=?",Integer.class,id)>1700);
+        } finally {db.execute("ALTER TABLE pdf_tool_job ALTER COLUMN expires_at DROP ON UPDATE");}
+    }
     @Test void failedJobsStayReadableWhenDatabaseTimezoneDiffers()throws Exception {
         db.execute("SET TIME ZONE '+14:00'");
         try {String a=token();String id=start(a,"compress",new byte[]{1,2,3});waitJob(id,a,"failed");mvc.perform(get("/api/pdf/jobs/"+id).header("Authorization",a)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("failed"));}
