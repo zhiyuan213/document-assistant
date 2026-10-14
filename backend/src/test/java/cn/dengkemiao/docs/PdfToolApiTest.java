@@ -18,6 +18,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:pdf-tools;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","spring.datasource.username=sa","spring.datasource.password=","PDF_TEMP_DIR=target/pdf-test-results"})
 @AutoConfigureMockMvc
 class PdfToolApiTest {
+    @Test void healthStaysPublicAndLegacyRoutesAreGone()throws Exception {
+        mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"));
+        mvc.perform(get("/__tcb_probe__")).andExpect(status().isOk());
+        mvc.perform(get("/api/resources")).andExpect(status().isNotFound());
+        mvc.perform(post("/api/auth/login").contentType("application/json").content("{}")).andExpect(status().isNotFound());
+    }
     @Autowired MockMvc mvc;@Autowired JdbcTemplate db;@Autowired ObjectMapper json;@Autowired PdfToolController controller;
     private String token()throws Exception{return "Bearer "+json.readTree(mvc.perform(post("/api/pdf/visitor")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asText();}
     private String start(String token,String tool,byte[] file)throws Exception{return json.readTree(mvc.perform(multipart("/api/pdf/jobs").file(new MockMultipartFile("files","test.pdf","application/pdf",file)).param("tool",tool).header("Authorization",token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("id").asText();}

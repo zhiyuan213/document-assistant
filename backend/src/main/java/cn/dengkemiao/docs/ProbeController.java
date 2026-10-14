@@ -6,6 +6,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class ProbeController {
-    @GetMapping("/__tcb_probe__")
+    @GetMapping({"/__tcb_probe__", "/api/health"})
     public Map<String, String> probe() { return Map.of("status", "ok"); }
 }

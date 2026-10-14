@@ -8,7 +8,7 @@ spring:
   servlet:
     multipart:
       max-file-size: 20MB
-      max-request-size: 100MB
+      max-request-size: 64MB
   sql:
     init:
       mode: ${SQL_INIT_MODE:always}
@@ -17,15 +17,4 @@ spring:
     async:
       request-timeout: 120000
 app:
-  dev-login: ${DEV_LOGIN:false}
   cors-origin: ${CORS_ORIGIN:http://localhost:5173}
-  storage-dir: ${STORAGE_DIR:./data/files}
-  storage: ${STORAGE:local}
-  free-daily-limit: ${FREE_DAILY_LIMIT:5}
-  wx-app-id: ${WX_APP_ID:}
-  wx-secret: ${WX_SECRET:}
-  cloud-secret-id: ${CLOUD_SECRET_ID:}
-  cloud-secret-key: ${CLOUD_SECRET_KEY:}
-  cloud-region: ${CLOUD_REGION:ap-guangzhou}
-  cos-bucket: ${COS_BUCKET:}
-  seed-demo: ${SEED_DEMO:false}

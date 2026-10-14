@@ -30,7 +30,7 @@ npm run build:mp-weixin --prefix frontend
 
 ## 云托管部署
 
-已有数据库先执行 [004_pdf_tools.sql](database/migrations/004_pdf_tools.sql)，新库可执行 [pdf-tools-init.sql](database/pdf-tools-init.sql)。旧表保留供回滚，不需要删除。生产环境变量参考 [JSON 模板](deploy/pdf-tools.env.json.example)，导入后设 `SQL_INIT_MODE=never`。容器端口 8080，健康检查 `/api/health`。
+已有数据库先执行 [004_pdf_tools.sql](database/migrations/004_pdf_tools.sql)，新库可执行 [pdf-tools-init.sql](database/pdf-tools-init.sql)。新版后端部署后，先备份数据库，再执行 [旧表清理脚本](database/migrations/005_remove_legacy_tables.sql)。它会删除14张旧资料平台表及数据，保留5张新版PDF工具表；初始化脚本不再创建旧表。生产环境变量参考 [JSON 模板](deploy/pdf-tools.env.json.example)，导入后设 `SQL_INIT_MODE=never`。容器端口 8080，健康检查 `/api/health`。
 
 当前结果保存在实例临时目录，需保持一个活动实例；多实例共享存储和可靠队列尚未接入。服务更新时请先下载已有结果。新版不要求微信 AppSecret 或 COS_BUCKET。
 

@@ -1,4 +1,4 @@
--- 新版PDF工具使用独立表，不删除旧表，不迁移旧用户文件。
+-- 先创建新版PDF工具表。旧库清理请在新版部署和备份后执行005。
 CREATE TABLE IF NOT EXISTS pdf_visitor (
  id CHAR(36) PRIMARY KEY, token_hash CHAR(64) NOT NULL UNIQUE,
  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

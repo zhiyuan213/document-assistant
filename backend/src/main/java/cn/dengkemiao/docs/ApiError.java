@@ -21,7 +21,7 @@ class ErrorHandler {
     @ExceptionHandler(ApiError.class)
     ResponseEntity<?> api(ApiError e) { return ResponseEntity.status(e.status).body(Map.of("message", e.getMessage())); }
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    ResponseEntity<?> size(Exception e) { return ResponseEntity.status(413).body(Map.of("message", "单个文件不能超过20MB，总上传不能超过100MB")); }
+    ResponseEntity<?> size(Exception e) { return ResponseEntity.status(413).body(Map.of("message", "单个文件不能超过20MB，总文件不能超过60MB")); }
     @ExceptionHandler(Exception.class)
     ResponseEntity<?> other(Exception e) {
         LoggerFactory.getLogger(ErrorHandler.class).error("Request failed", e);

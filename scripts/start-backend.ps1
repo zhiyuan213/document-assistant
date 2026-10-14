@@ -9,7 +9,6 @@ $javaExe = if ($javaCommand) { $javaCommand.Source } else {
 Push-Location (Join-Path $projectRoot 'backend')
 try {
     if (-not (Test-Path 'target/doc-assistant-0.1.0.jar')) { throw '请先运行mvn package' }
-    $env:DEV_LOGIN = 'true'
     $env:CORS_ORIGIN = 'http://127.0.0.1:5173'
     & $javaExe -Xmx768m -jar target/doc-assistant-0.1.0.jar
 } finally { Pop-Location }

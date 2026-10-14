@@ -35,15 +35,15 @@
 
 上传文件只驻留处理内存；Word 转换的临时输入与转换目录在任务结束时清理。密码只传给本次任务，不写入数据库或日志。输出在 `PDF_TEMP_DIR` 暂存 30 分钟，每分钟清理一次，过期接口立即拒绝下载。完成页支持用户主动删除结果。数据库保留的只是设备凭证摘要、额度和短期任务信息，不保存原文件名或文件正文。
 
-当前临时结果是实例本地文件，**云托管应保持一个活动实例，关闭自动扩成多个实例**。重新部署可能使尚未下载的结果丢失。多实例需要共享临时对象存储和可靠任务队列，这是后续工作。旧版 `COS_BUCKET` 不用于新版临时结果，新版不要求 Redis、微信 AppSecret 或 COS 凭据。
+当前临时结果是实例本地文件，**云托管应保持一个活动实例，关闭自动扩成多个实例**。重新部署可能使尚未下载的结果丢失。多实例需要共享临时对象存储和可靠任务队列，这是后续工作。旧版 `COS_BUCKET` 不用于新版临时结果，新版不要求 Redis、微信 AppSecret 或 COS 凭据，相关模块及环境变量已清理。
 
 容器最多同时处理两项任务，等待队列四项。服务中断的未完成任务在到期清理时返还预占次数；不要将应用就绪探测等同于数据库和转换组件验收。
 
 ## 数据库升级
 
-已有 `dengke` 库执行 `database/migrations/004_pdf_tools.sql`，增加以下独立表：`pdf_visitor`、`pdf_daily_quota`、`pdf_tool_job`、`pdf_credit_balance`、`pdf_purchase`。不需要删除旧数据。新版前端不访问原资料库和微信登录接口。
+已有 `dengke` 库先执行 `database/migrations/004_pdf_tools.sql`，增加以下表：`pdf_visitor`、`pdf_daily_quota`、`pdf_tool_job`、`pdf_credit_balance`、`pdf_purchase`。随后部署最新纯PDF工具后端，备份数据库，再执行 `database/migrations/005_remove_legacy_tables.sql`，删除14张旧模块表及其数据。此脚本不删除任何 `pdf_*` 表。旧资料列表与微信登录接口已从后端移除。
 
-新库可只执行 `database/pdf-tools-init.sql`。`database/init.sql` 是包含旧版兼容表的完整初始化脚本；生产导入后设置 `SQL_INIT_MODE=never`。旧版表保留供回滚，后续确认不再需要时再备份清理。
+新库可只执行 `database/pdf-tools-init.sql`。`database/init.sql`、`database/pdf-tools-init.sql` 和后端 schema.sql 均只包含5张新版PDF工具表；生产导入后设置 `SQL_INIT_MODE=never`，不会重新创建旧表。
 
 生产配置模板见 `deploy/pdf-tools.env.json.example`。数据库地址用实际内网地址，容器端口 8080，健康探测 `/api/health`，平台探测 `/__tcb_probe__` 均无需登录。
 
@@ -67,7 +67,7 @@ Dockerfile 已安装 LibreOffice Writer 和 WenQuanYi 中文字体，初次构�
 
 ## 品牌素材与预览
 
-本轮验证：26 项后端测试通过，H5 与微信小程序构建通过，小程序包约 0.18MB。真实容器验证 Word 转 PDF 和中文水印均输出有效 PDF；浏览器验证匿名上传、拆分、下载 ZIP、收藏工具以及每日额度扣减。原测试也保留以验证旧版兼容代码。微信真机分享、ZIP 分享保存及正式域名仍需上线配置后验收。
+本轮验证：13 项后端测试通过，H5 与微信小程序构建通过，小程序包约 0.18MB。真实容器验证 Word 转 PDF 和中文水印均输出有效 PDF；浏览器验证匿名上传、拆分、下载 ZIP、收藏工具以及每日额度扣减。旧资料平台、登录、OCR/COS代码及其测试已移除，当前测试覆盖PDF工具、免费额度、文件归属和健康探测。微信真机分享、ZIP 分享保存及正式域名仍需上线配置后验收。
 
 灰白猫由 imagegen 内置工具生成透明 PNG，原图 `branding/pdf-cat-original.png` 保留，页面使用优化尺寸的 `frontend/src/static/brand/pdf-cat.png`。完整生成提示词在 `branding/pdf-cat-prompt.txt`。
 
