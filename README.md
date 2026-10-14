@@ -6,7 +6,7 @@
 
 PDF 转 Word（文字提取版）、Word 转 PDF（LibreOffice）、合并、拆分、三级压缩、图片转 PDF、PDF 转图片、文字/图片水印、AES-256 加密和输入已知密码解密。首页九宫格和全部工具列表，支持分享工具页面、设备本地收藏。
 
-收费开关 `PDF_BILLING_ENABLED` 默认 `false`，不限次数免费使用；设为 `true` 后非会员每日免费处理 3 次，月卡 9.90 元一个月、每日最多 100 个文件，失败返还额度。首页显示会员有效期，支付与广告仍未开通。旧库升级前先执行 `database/migrations/007_monthly_membership.sql`，详见 `docs/MONTHLY_MEMBERSHIP.md`。
+收费开关 `PDF_BILLING_ENABLED` 默认 `false`，不限次数免费使用；设为 `true` 后非会员每日免费处理 3 次，月卡 9.90 元一个月、有效期内不限量处理，失败返还额度。首页显示会员有效期，支付与广告仍未开通。旧库升级前先执行 `database/migrations/007_monthly_membership.sql`，详见 `docs/MONTHLY_MEMBERSHIP.md`。
 
 ## 本地运行
 

@@ -43,19 +43,19 @@ public class PdfToolController {
     }
     private static String hash(String value){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     @PostMapping("/visitor") public Map<String,Object> create(){String id=UUID.randomUUID().toString(),token=UUID.randomUUID().toString()+UUID.randomUUID();db.update("INSERT INTO pdf_visitor(id,token_hash) VALUES (?,?)",id,hash(token));return Map.of("token",token);}
-    @GetMapping("/config") public Map<String,Object> config(){return Map.of("billingEnabled",billingEnabled,"dailyFree",3,"retentionMinutes",30,"paymentEnabled",false,"adEnabled",false,"packages",List.of(Map.of("id","monthly","priceFen",990,"months",1,"dailyFileLimit",100)));}
+    @GetMapping("/config") public Map<String,Object> config(){return Map.of("billingEnabled",billingEnabled,"dailyFree",3,"retentionMinutes",30,"paymentEnabled",false,"adEnabled",false,"packages",List.of(Map.of("id","monthly","priceFen",990,"months",1,"dailyFileLimit",-1)));}
     @GetMapping("/quota") public Map<String,Object> quota(@RequestHeader(value="Authorization",required=false)String header){
         String id=visitor(header);var member=membership(id);boolean active=Boolean.TRUE.equals(member.get("active"));
         var rows=db.queryForList("SELECT used_count,used_files FROM pdf_daily_quota WHERE visitor_id=? AND quota_date=?",id,today());
         int used=rows.isEmpty()?0:((Number)rows.get(0).get(active?"used_files":"used_count")).intValue();
-        return Map.of("billingEnabled",billingEnabled,"unlimited",!billingEnabled,"remaining",billingEnabled?Math.max(0,(active?100:3)-used):-1,"dailyLimit",active?100:3,"unit",active?"files":"jobs","membership",member,"resetTimezone","Asia/Shanghai");
+        return Map.of("billingEnabled",billingEnabled,"unlimited",!billingEnabled||active,"remaining",billingEnabled&&!active?Math.max(0,3-used):-1,"dailyLimit",active?-1:3,"unit",active?"files":"jobs","membership",member,"resetTimezone","Asia/Shanghai");
     }
     private void reserve(String id,LocalDate day,int files){tx.executeWithoutResult(status->{
         boolean active=Boolean.TRUE.equals(membership(id).get("active"));
         db.update("INSERT INTO pdf_daily_quota(visitor_id,quota_date,used_count,used_files) VALUES (?,?,0,0) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)",id,day);
-        String condition=active?"used_files+?<=100":"used_count<3";
-        int changed=active?db.update("UPDATE pdf_daily_quota SET used_count=used_count+1,used_files=used_files+? WHERE visitor_id=? AND quota_date=? AND "+condition,files,id,day,files):db.update("UPDATE pdf_daily_quota SET used_count=used_count+1,used_files=used_files+? WHERE visitor_id=? AND quota_date=? AND "+condition,files,id,day);
-        if(changed!=1)throw new ApiError(active?429:402,active?"今日100个文件的处理额度已用完或不足，请明日再试":"今日3次免费额度已用完，请明日再试；月卡支付暂未开通");
+        String condition=active?"1=1":"used_count<3";
+        int changed=active?db.update("UPDATE pdf_daily_quota SET used_count=used_count+1,used_files=used_files+? WHERE visitor_id=? AND quota_date=? AND "+condition,files,id,day):db.update("UPDATE pdf_daily_quota SET used_count=used_count+1,used_files=used_files+? WHERE visitor_id=? AND quota_date=? AND "+condition,files,id,day);
+        if(changed!=1)throw new ApiError(402,"今日3次免费额度已用完，请明日再试；月卡支付暂未开通");
     });}
     private void refund(String id,LocalDate day,int files){if(day.equals(LocalDate.ofEpochDay(0)))return;db.update("UPDATE pdf_daily_quota SET used_count=GREATEST(0,used_count-1),used_files=GREATEST(0,used_files-?) WHERE visitor_id=? AND quota_date=?",files,id,day);}
     @PostMapping(value="/jobs",consumes="multipart/form-data") public Map<String,Object> submit(@RequestHeader(value="Authorization",required=false)String header,@RequestParam String tool,@RequestParam("files")List<MultipartFile> files,@RequestParam Map<String,String> params) throws IOException {

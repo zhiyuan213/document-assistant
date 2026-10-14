@@ -23,27 +23,28 @@ class PdfToolApiTest {
         assertEquals(java.time.LocalDateTime.of(2026,2,28,12,0),PdfToolController.monthEnd(java.time.LocalDateTime.of(2026,1,31,12,0)));
         assertEquals(java.time.LocalDateTime.of(2028,2,29,12,0),PdfToolController.monthEnd(java.time.LocalDateTime.of(2028,1,31,12,0)));
     }
-    @Test void memberCountsInputFilesAndFallsBackToFreePlanAfterExpiry()throws Exception {
+    @Test void memberAllowsMoreThan100FilesAndFallsBackAfterExpiry()throws Exception {
         String a=token();byte[] source=new PdfService().images(List.of(PdfServiceTest.image()),false,false);
         String first=start(a,"compress",source);waitJob(first,a,"completed");
         String owner=db.queryForObject("SELECT visitor_id FROM pdf_tool_job WHERE id=?",String.class,first);
         var expires=PdfToolController.monthEnd(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai")));
         db.update("INSERT INTO pdf_membership(visitor_id,expires_at) VALUES (?,?)",owner,Timestamp.valueOf(expires));
-        db.update("UPDATE pdf_daily_quota SET used_files=98 WHERE visitor_id=?",owner);
-        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.membership.active").value(true)).andExpect(jsonPath("$.remaining").value(2)).andExpect(jsonPath("$.unit").value("files"));
+        db.update("UPDATE pdf_daily_quota SET used_files=1000 WHERE visitor_id=?",owner);
+        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.membership.active").value(true)).andExpect(jsonPath("$.remaining").value(-1)).andExpect(jsonPath("$.unlimited").value(true));
         String job=json.readTree(mvc.perform(multipart("/api/pdf/jobs").file(new MockMultipartFile("files","a.pdf","application/pdf",source)).file(new MockMultipartFile("files","b.pdf","application/pdf",source)).param("tool","merge").header("Authorization",a)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("id").asText();waitJob(job,a,"completed");
-        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.remaining").value(0));
-        mvc.perform(multipart("/api/pdf/jobs").file(new MockMultipartFile("files","a.pdf","application/pdf",source)).param("tool","compress").header("Authorization",a)).andExpect(status().isTooManyRequests());
+        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.remaining").value(-1));
+        mvc.perform(multipart("/api/pdf/jobs").file(new MockMultipartFile("files","a.pdf","application/pdf",source)).param("tool","compress").header("Authorization",a)).andExpect(status().isOk());
         db.update("UPDATE pdf_membership SET expires_at=? WHERE visitor_id=?",Timestamp.valueOf(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).minusSeconds(1)),owner);
-        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.membership.active").value(false)).andExpect(jsonPath("$.remaining").value(1)).andExpect(jsonPath("$.unit").value("jobs"));
+        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.membership.active").value(false)).andExpect(jsonPath("$.remaining").value(0)).andExpect(jsonPath("$.unlimited").value(false));
     }
     @Test void failedMemberMergeRefundsEveryInputFile()throws Exception {
         String a=token();String first=start(a,"compress",new byte[]{1});waitJob(first,a,"failed");
         String owner=db.queryForObject("SELECT visitor_id FROM pdf_tool_job WHERE id=?",String.class,first);
         db.update("INSERT INTO pdf_membership(visitor_id,expires_at) VALUES (?,?)",owner,Timestamp.valueOf(java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).plusMonths(1)));
-        db.update("UPDATE pdf_daily_quota SET used_files=98 WHERE visitor_id=?",owner);
+        db.update("UPDATE pdf_daily_quota SET used_files=1000 WHERE visitor_id=?",owner);
         String job=json.readTree(mvc.perform(multipart("/api/pdf/jobs").file(new MockMultipartFile("files","a.pdf","application/pdf",new byte[]{1})).file(new MockMultipartFile("files","b.pdf","application/pdf",new byte[]{2})).param("tool","merge").header("Authorization",a)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("id").asText();waitJob(job,a,"failed");
-        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.remaining").value(2));
+        mvc.perform(get("/api/pdf/quota").header("Authorization",a)).andExpect(jsonPath("$.remaining").value(-1));
+        assertEquals(1000,db.queryForObject("SELECT used_files FROM pdf_daily_quota WHERE visitor_id=?",Integer.class,owner));
     }
     @Test void failedJobsPreserveExpiryEvenWithLegacyAutoUpdateColumn()throws Exception {
         db.execute("ALTER TABLE pdf_tool_job ALTER COLUMN expires_at SET ON UPDATE CURRENT_TIMESTAMP");
@@ -99,6 +100,6 @@ class PdfToolApiTest {
     @Test void noClientClaimCanGrantPaymentOrAdCredits()throws Exception{
         mvc.perform(post("/api/pdf/purchase")).andExpect(status().isServiceUnavailable());
         mvc.perform(post("/api/pdf/ad-reward")).andExpect(status().isServiceUnavailable());
-        mvc.perform(get("/api/pdf/config")).andExpect(jsonPath("$.dailyFree").value(3)).andExpect(jsonPath("$.packages[0].priceFen").value(990)).andExpect(jsonPath("$.packages[0].dailyFileLimit").value(100)).andExpect(jsonPath("$.packages[0].months").value(1));
+        mvc.perform(get("/api/pdf/config")).andExpect(jsonPath("$.dailyFree").value(3)).andExpect(jsonPath("$.packages[0].priceFen").value(990)).andExpect(jsonPath("$.packages[0].dailyFileLimit").value(-1)).andExpect(jsonPath("$.packages[0].months").value(1));
     }
 }

@@ -5,7 +5,7 @@
   <view v-if="billingEnabled===false" class="muted">当前免费开放，不限处理次数，无需购买。</view>
   <template v-else-if="billingEnabled===true">
    <view class="muted">非会员每日免费 3 次 · 处理失败不扣额度</view>
-   <view class="package"><text class="price">¥9.90</text><view>一个月会员</view><view>每天最多处理 100 个文件</view><text class="muted">从购买生效时起，到下个月同一天同一时间到期；无对应日期时按月末计算。</text><button @click="unavailable">月卡支付待开通</button></view>
+   <view class="package"><text class="price">¥9.90</text><view>一个月会员</view><view>会员有效期内不限量处理</view><text class="muted">从购买生效时起，到下个月同一天同一时间到期；无对应日期时按月末计算。</text><button @click="unavailable">月卡支付待开通</button></view>
    <view class="terms">额度按北京时间每日 0 点重置。合并或图片转换按输入文件数量计算，水印素材不计入；失败退回额度。不自动续费。微信支付尚未接入，当前不收款、不发放会员。</view>
   </template>
   <view v-else class="muted">{{billingError || '正在获取使用状态…'}}</view>
