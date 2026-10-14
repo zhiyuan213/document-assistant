@@ -61,16 +61,40 @@ export async function savePdf(job) {
   const object = URL.createObjectURL(await response.blob()), a = document.createElement('a'); a.href = object; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(object), 30000)
   // #endif
   // #ifdef MP-WEIXIN
-  const result = await new Promise((resolve, reject) => uni.downloadFile({ url, header, success: resolve, fail: reject }))
+  const result = await new Promise((resolve, reject) => uni.downloadFile({ url, header, success: resolve, fail: e => reject(networkError(e)) }))
   if (result.statusCode !== 200) throw new Error('文件已过期或下载失败')
   const path = wx.env.USER_DATA_PATH + '/dengke-result-' + job.id + '.' + job.extension
-  await new Promise((resolve, reject) => wx.getFileSystemManager().copyFile({ srcPath: result.tempFilePath, destPath: path, success: resolve, fail: reject }))
-  if (job.extension === 'zip') {
-    await new Promise((resolve, reject) => wx.shareFileMessage({ filePath: path, fileName: name, success: resolve, fail: reject }))
-  } else {
-    await new Promise((resolve, reject) => uni.openDocument({ filePath: path, fileType: job.extension, showMenu: true, success: resolve, fail: reject }))
-    uni.showToast({ title: '通过右上角菜单保存或分享', icon: 'none' })
-  }
+  const fs = wx.getFileSystemManager()
+  let exists = false
+  try { fs.accessSync(path); exists = true } catch {}
+  if (!exists) await new Promise((resolve, reject) => fs.copyFile({ srcPath: result.tempFilePath, destPath: path, success: resolve, fail: e => reject(fileError('保存到手机', e)) }))
+  return { path, name, extension: job.extension }
+  // #endif
+}
+
+function fileError(stage, cause) {
+  const message = String(cause?.errMsg || '').toLowerCase()
+  const cancelled = message.includes('cancel')
+  let text = cancelled ? '已取消操作' : stage + '失败，请重新下载后重试'
+  if (message.includes('tap gesture')) text = '请直接点击“发送 / 保存到微信”按钮'
+  else if (message.includes('no such file') || message.includes('not exist')) text = '手机临时文件已清理，请重新下载'
+  else if (message.includes('space') || message.includes('quota')) text = '手机存储空间不足，请清理后再下载'
+  else if (message.includes('not support')) text = '当前微信版本不支持该文件操作，请更新微信后重试'
+  return Object.assign(new Error(text), { cancelled })
+}
+
+// Called directly from the second button tap, before any asynchronous file operation.
+export function openSavedPdf(file, platform) {
+  // #ifdef MP-WEIXIN
+  const native = platform || wx
+  return new Promise((resolve, reject) => {
+    if (file.extension === 'zip') {
+      if (typeof native.shareFileMessage !== 'function') { reject(new Error('当前微信版本不支持发送文件，请更新微信')); return }
+      native.shareFileMessage({ filePath: file.path, fileName: file.name, success: resolve, fail: e => reject(fileError('发送文件', e)) })
+    } else {
+      native.openDocument({ filePath: file.path, fileType: file.extension, showMenu: true, success: resolve, fail: e => reject(fileError('打开文档', e)) })
+    }
+  })
   // #endif
 }
 

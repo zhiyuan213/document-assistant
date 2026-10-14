@@ -49,7 +49,7 @@ public class PdfToolController {
         // Epoch date means no quota was reserved, including when cleaning jobs after a config change.
         LocalDate day=billingEnabled?today():LocalDate.ofEpochDay(0);if(billingEnabled)reserve(owner,day);String id=UUID.randomUUID().toString();
         try {
-            db.update("INSERT INTO pdf_tool_job(id,visitor_id,tool,status,progress,quota_date,expires_at) VALUES (?,?,?,'queued',10,?,?)",id,owner,tool,day,java.sql.Timestamp.from(Instant.now().plusSeconds(1800)));
+            db.update("INSERT INTO pdf_tool_job(id,visitor_id,tool,status,progress,quota_date,expires_at) VALUES (?,?,?,'queued',10,?,TIMESTAMPADD(MINUTE,30,CURRENT_TIMESTAMP))",id,owner,tool,day);
             String name=Optional.ofNullable(files.get(0).getOriginalFilename()).orElse("input");var options=new HashMap<>(params);options.remove("tool");
             workers.execute(()->process(id,owner,day,tool,content,name,options));return Map.of("id",id);
         } catch(Exception e){db.update("DELETE FROM pdf_tool_job WHERE id=?",id);refund(owner,day);if(e instanceof RejectedExecutionException)throw new ApiError(429,"当前处理繁忙，请稍后重试");throw e;}
@@ -60,7 +60,7 @@ public class PdfToolController {
             db.update("UPDATE pdf_tool_job SET status='processing',progress=35 WHERE id=?",id);
             var result=tools.run(tool,content,name,options);if(result.bytes().length>100*1024*1024)throw new ApiError(400,"输出文件超过100MB，请拆分处理");
             Files.createDirectories(resultPath(id).getParent());Files.write(resultPath(id),result.bytes());
-            db.update("UPDATE pdf_tool_job SET status='completed',progress=100,extension=?,size_bytes=?,expires_at=? WHERE id=?",result.extension(),result.bytes().length,java.sql.Timestamp.from(Instant.now().plusSeconds(1800)),id);
+            db.update("UPDATE pdf_tool_job SET status='completed',progress=100,extension=?,size_bytes=?,expires_at=TIMESTAMPADD(MINUTE,30,CURRENT_TIMESTAMP) WHERE id=?",result.extension(),result.bytes().length,id);
         } catch(Exception e) {try{Files.deleteIfExists(resultPath(id));}catch(IOException ignored){}
             String message=e instanceof ApiError?e.getMessage():"文件处理失败，请检查文件格式或是否损坏";
             db.update("UPDATE pdf_tool_job SET status='failed',error_message=? WHERE id=?",message,id);refund(owner,day);

@@ -21,7 +21,7 @@
       <view class="pdf-tip">文件仅用于本次处理，结果 30 分钟后自动删除。请及时保存到手机。密码不写入数据库。</view>
     </template>
     <view v-else-if="busy" class="processing"><image src="/static/brand/pdf-cat.png" mode="aspectFit"/><view class="progress-circle">{{ stagePercent === 0 ? '上传中' : stagePercent+'%' }}</view><view class="intro-title">{{ stage }}</view><text class="muted">进度反映处理阶段，复杂文件请耐心等待</text><view class="pdf-tip">{{ selected[0]?.name }}<br/>请保持页面打开，处理后及时下载</view></view>
-    <view v-else class="result"><view class="success-mark">✓</view><view class="intro-title">处理完成！</view><view class="muted">结果可下载，30 分钟后自动删除</view><view class="result-file"><PdfIcon :label="result.extension.toUpperCase()" :color="tool.color"/><view><text>登科喵结果.{{result.extension}}</text><view class="muted">{{size(result.size_bytes)}}</view></view></view><button class="pdf-primary" :loading="saving" @click="save">下载 / 保存文件</button><button class="pdf-secondary" @click="again">再处理一个</button><button class="pdf-secondary" @click="openTools">转换其他格式</button><button class="delete-result" @click="remove">立即删除服务器结果</button></view>
+    <view v-else class="result"><view class="success-mark">✓</view><view class="intro-title">处理完成！</view><view class="muted">结果可下载，30 分钟后自动删除</view><view class="result-file"><PdfIcon :label="result.extension.toUpperCase()" :color="tool.color"/><view><text>登科喵结果.{{result.extension}}</text><view class="muted">{{size(result.size_bytes)}}</view></view></view><button class="pdf-primary" :loading="saving" @click="save">下载文件</button><button v-if="preparedFile" class="pdf-primary" @click="openPrepared">{{preparedFile.extension==='zip'?'发送 / 保存到微信':'打开文件'}}</button><view v-if="preparedFile" class="muted">{{preparedFile.extension==='zip'?'可发送到文件传输助手，再保存或解压':'打开后使用右上角菜单保存或分享'}}</view><button class="pdf-secondary" @click="again">再处理一个</button><button class="pdf-secondary" @click="openTools">转换其他格式</button><button class="delete-result" @click="remove">立即删除服务器结果</button></view>
     <view v-if="error" class="error-message">{{error}}</view>
   </view>
 </template>
@@ -30,10 +30,11 @@ import {ref,computed} from 'vue'
 import {onLoad,onUnload,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
-import {pdfRequest,submitPdf,savePdf} from '../../lib/pdf-api'
+import {pdfRequest,submitPdf,savePdf,openSavedPdf} from '../../lib/pdf-api'
 import {pollPdfJob} from '../../lib/pdf-job'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),quota=ref(null),stagePercent=ref(0),stage=ref('正在上传文件…')
 const billingEnabled=ref(null)
+const preparedFile=ref(null)
 const splitMode=ref('pages'),ranges=ref(''),orientation=ref('portrait'),format=ref('jpg'),watermark=ref(''),password=ref(''),confirmation=ref('')
 const compression=ref('standard'),imageOutput=ref('merged'),watermarkMode=ref('text'),watermarkFile=ref(null),compressionLevels=[{id:'light',title:'轻量 · 高清'},{id:'standard',title:'标准'},{id:'strong',title:'强力 · 小文件'}]
 const pickerLabel=computed(()=>{
@@ -71,8 +72,9 @@ async function run(){if(busy.value)return;error.value='';if(tool.value.id==='enc
   const job=await pollPdfJob(()=>pdfRequest('/jobs/'+created.id),{active:()=>alive,onProgress:job=>{stagePercent.value=job.progress;stage.value=job.status==='syncing'?'文件已上传，正在同步任务状态…':job.status==='queued'?'文件已上传，等待处理…':'正在处理文件…'}})
   if(job){result.value=job;selected.value=[]}
  }catch(e){error.value=e.message;if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}finally{busy.value=false;if(alive)await refreshQuota()}}
-async function save(){if(saving.value)return;saving.value=true;try{await savePdf(result.value)}catch(e){error.value=e.message||'保存失败，请重试'}finally{saving.value=false}}
-function again(){result.value=null;error.value=''}
+async function save(){if(saving.value)return;saving.value=true;error.value='';try{preparedFile.value=await savePdf(result.value)||null;if(preparedFile.value)uni.showToast({title:'已下载，请点击下方打开或发送',icon:'none'})}catch(e){error.value=e.message||'下载失败，请重试'}finally{saving.value=false}}
+function openPrepared(){error.value='';openSavedPdf(preparedFile.value).catch(e=>{if(!e.cancelled)error.value=e.message})}
+function again(){result.value=null;preparedFile.value=null;error.value=''}
 function openTools(){uni.switchTab({url:'/pages/tools/index'})}
 async function remove(){try{await pdfRequest('/jobs/'+result.value.id,'DELETE');again();uni.showToast({title:'服务器结果已删除',icon:'none'})}catch(e){error.value=e.message}}
 </script>
