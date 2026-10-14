@@ -1,244 +1,28 @@
 <template>
-  <view class="page home-page" :style="headerPadding(32, true)">
-    <view class="home-title">登科喵资料助手</view
-    ><view class="home-subtitle">资料搜索 · 分类浏览 · 轻松整理</view>
-    <view class="search-bar"
-      ><image src="/static/icons/search-muted.png" /><input
-        v-model="query"
-        placeholder="搜索资料、真题、笔记…"
-        confirm-type="search"
-        @confirm="search" /><button @click="search">
-        <image src="/static/icons/search-white.png" /></button
-    ></view>
-    <view class="hero" @click="searchResources()"
-      ><view class="hero-copy"
-        ><view>好资料，</view><view>让努力更简单！</view><view class="hero-line"></view></view
-      ><text class="hero-star">✦</text><image class="hero-cat" :src="mascotSrc" mode="aspectFit"
-    /></view>
-    <view class="category-grid"
-      ><view
-        v-for="category in categories"
-        :key="category.id"
-        class="category-entry"
-        @click="openCategory(category.id)"
-        ><AppIcon :name="category.icon" :color="category.color" :size="94" /><text>{{
-          category.id === 'other' ? '更多分类' : category.name
-        }}</text></view
-      ></view
-    >
-    <view class="popular-panel"
-      ><view class="section-title row"
-        ><text>热门资料</text><text class="more" @click="searchResources()">查看更多 ›</text></view
-      ><ListState
-        :error="error"
-        :loading="loading"
-        :empty="!items.length"
-        @retry="load(true)" /><ResourceCard
-        v-for="resource in items.slice(0, 4)"
-        :key="resource.id"
-        :resource="resource"
-    /></view>
-    <view class="tools-panel"
-      ><view class="section-title row"
-        ><text>文件处理工具</text><text class="more" @click="openTools">全部工具 ›</text></view
-      ><view class="tool-strip"
-        ><view v-for="tool in tools" :key="tool.id" @click="openTool(tool.id)"
-          ><text class="tool-symbol">{{ tool.icon }}</text
-          ><text>{{ tool.title === 'OCR文字识别' ? 'OCR识别' : tool.title }}</text></view
-        ></view
-      ></view
-    >
-    <view class="home-footer">好资料 · 好未来</view>
+  <view class="pdf-home" :style="headerPadding(20,true)">
+    <view class="home-actions"><button open-type="share">↗ 分享</button><button @click="collectApp">☆ 收藏</button></view>
+    <view class="home-hero"><view><view class="brand-title">登科喵PDF</view><view class="brand-tag">简单 · 高效 · 安全</view><view class="brand-desc">无需注册，选好文件即可处理。<br/>结果下载到手机，30分钟后自动清理。</view></view><image src="/static/brand/pdf-cat.png" mode="aspectFit"/></view>
+    <view class="daily-line"><text>每日免费处理 1 次</text><text @click="credits">更多次数 ›</text></view>
+    <view class="tool-grid"><view v-for="tool in pdfTools.slice(0,9)" :key="tool.id" @click="openPdfTool(tool.id)"><PdfIcon :label="tool.label" :color="tool.color"/><text>{{tool.title}}</text></view></view>
+    <view class="more-tools" @click="allTools">PDF 解密 · 常用收藏 · 全部工具 ›</view>
+    <view v-if="saved.length" class="saved-line"><text>常用工具</text><text v-for="id in saved.slice(0,3)" :key="id" @click="openPdfTool(id)">{{pdfTools.find(t=>t.id===id)?.title}}</text></view>
+    <view class="resume-entry" @click="resume"><image src="/static/brand/pdf-cat.png" mode="aspectFit"/><view><view>登科喵简历助手</view><text>让你的简历更出色</text></view><text>›</text></view>
+    <view class="home-note">文件临时处理 · 密码不落库 · 下载后可立即删除</view>
   </view>
 </template>
 <script setup>
-import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import AppIcon from '../../components/AppIcon.vue'
-import ResourceCard from '../../components/ResourceCard.vue'
-import ListState from '../../components/ListState.vue'
-import { fallbackCategories, openCategory, searchResources } from '../../lib/catalog'
-import { useResourceList } from '../../lib/useResourceList'
-import { request } from '../../lib/api'
-import { mascotSrc } from '../../lib/brand'
-import { tools, openTool } from '../../lib/tools'
-import { headerPadding } from '../../lib/layout'
-const query = ref(''),
-  categories = ref(fallbackCategories)
-const { items, error, loading, load } = useResourceList('/resources', () => ({ sort: 'popular' }))
-onShow(async () => {
-  load(true)
-  try {
-    categories.value = await request('/categories')
-  } catch {}
-})
-function search() {
-  searchResources({ q: query.value.trim() })
-}
-function openTools() {
-  uni.navigateTo({ url: '/pages/tools/index' })
-}
+import {ref} from 'vue'
+import {onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
+import PdfIcon from '../../components/PdfIcon.vue'
+import {pdfTools,openPdfTool,favorites,pdfShare} from '../../lib/pdf-tools'
+import {headerPadding} from '../../lib/layout'
+const saved=ref([])
+onShow(()=>saved.value=favorites());onShareAppMessage(()=>pdfShare());onAddToFavorites(()=>({title:'登科喵PDF · 常用PDF工具'}))
+function allTools(){uni.switchTab({url:'/pages/tools/index'})}
+function credits(){uni.navigateTo({url:'/pages/pdf/credits'})}
+function resume(){uni.navigateTo({url:'/pages/pdf/resume'})}
+function collectApp(){uni.showModal({title:'收藏小程序',content:'点击右上角“…”菜单，将登科喵PDF添加到我的小程序；每个工具也可以单独收藏。',showCancel:false})}
 </script>
 <style scoped>
-.home-page {
-  padding: 32rpx 28rpx 40rpx;
-  padding-top: calc(var(--status-bar-height, 0px) + 32rpx);
-  background: linear-gradient(#fff, #faf9ff);
-  min-height: 100vh;
-}
-.home-title {
-  font-size: 40rpx;
-  font-weight: 800;
-  letter-spacing: -1rpx;
-  color: #201e31;
-}
-.home-subtitle {
-  font-size: 22rpx;
-  color: #9390a5;
-  margin-top: 10rpx;
-}
-.search-bar {
-  display: flex;
-  align-items: center;
-  height: 74rpx;
-  background: #f6f4fb;
-  border: 1rpx solid #eae5f7;
-  border-radius: 18rpx;
-  overflow: hidden;
-  margin-top: 30rpx;
-  gap: 16rpx;
-  padding-left: 22rpx;
-}
-.search-bar > image {
-  width: 30rpx;
-  height: 30rpx;
-  flex-shrink: 0;
-}
-.search-bar input {
-  flex: 1;
-  min-width: 0;
-  font-size: 25rpx;
-}
-.search-bar button {
-  width: 106rpx;
-  height: 74rpx;
-  padding: 20rpx 30rpx;
-  background: linear-gradient(130deg, #9d73ff, #6935ff);
-  border-radius: 16rpx;
-  color: white;
-  margin: 0;
-}
-.search-bar button image {
-  width: 40rpx;
-  height: 40rpx;
-}
-.hero {
-  height: 218rpx;
-  position: relative;
-  background: linear-gradient(120deg, #9563ff, #6330ff);
-  border-radius: 24rpx;
-  margin: 42rpx 0 32rpx;
-  box-shadow: 0 10rpx 24rpx #7943ec18;
-}
-.hero-copy {
-  position: absolute;
-  left: 30rpx;
-  top: 42rpx;
-  color: #fff;
-  font-size: 32rpx;
-  font-weight: 750;
-  line-height: 1.65;
-  transform: rotate(-8deg);
-  z-index: 1;
-}
-.hero-line {
-  width: 242rpx;
-  height: 4rpx;
-  border-radius: 3rpx;
-  background: #ffffffbb;
-  margin-top: 8rpx;
-}
-.hero-cat {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 290rpx;
-  height: 266rpx;
-  z-index: 2;
-}
-.hero-star {
-  position: absolute;
-  right: 290rpx;
-  top: 24rpx;
-  color: #ffd778;
-  font-size: 42rpx;
-}
-.category-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  row-gap: 24rpx;
-  margin: 0 0 30rpx;
-}
-.category-entry {
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-  gap: 12rpx;
-}
-.category-entry text {
-  font-size: 22rpx;
-  color: #625d76;
-}
-.popular-panel {
-  background: #fff;
-  border-radius: 24rpx;
-  padding: 18rpx 18rpx 0;
-  box-shadow: 0 4rpx 24rpx #6745ae08;
-}
-.section-title {
-  font-size: 30rpx;
-  margin: 0;
-  padding: 12rpx 0 18rpx;
-}
-.more {
-  font-size: 22rpx;
-  font-weight: 400;
-  color: #9993aa;
-}
-.tools-panel {
-  margin-top: 30rpx;
-  background: #fff;
-  border-radius: 24rpx;
-  padding: 18rpx;
-}
-.tool-strip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-}
-.tool-strip > view {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12rpx;
-  color: #736889;
-  font-size: 20rpx;
-  padding: 14rpx 0;
-}
-.tool-symbol {
-  background: #f0eaff;
-  color: #7b44f2;
-  border-radius: 15rpx;
-  width: 62rpx;
-  height: 62rpx;
-  text-align: center;
-  line-height: 62rpx;
-  font-size: 32rpx;
-  font-weight: 700;
-}
-.home-footer {
-  text-align: center;
-  font-size: 22rpx;
-  color: #b4a9c9;
-  margin-top: 30rpx;
-}
+.pdf-home{min-height:calc(100vh - var(--window-bottom,0px));padding:20rpx 28rpx 24rpx;background:linear-gradient(140deg,#eff8ff,#fff 55%)}.home-actions{display:flex;justify-content:flex-end;gap:12rpx}.home-actions button{margin:0;padding:5rpx 14rpx;background:#ffffffcc;border-radius:30rpx;font-size:22rpx;color:#283b59}.home-hero{display:flex;align-items:center;justify-content:space-between;padding:14rpx 0 18rpx;gap:12rpx}.brand-title{font-size:44rpx;font-weight:900;letter-spacing:-1rpx;color:#10203d}.brand-tag{font-size:27rpx;font-weight:700;margin-top:16rpx}.brand-desc{font-size:21rpx;line-height:1.7;color:#72839c;margin-top:12rpx}.home-hero image{width:190rpx;height:220rpx;flex-shrink:0}.daily-line{display:flex;justify-content:space-between;background:#eaf5ff;border-radius:12rpx;color:#087bff;font-size:22rpx;padding:12rpx 18rpx;margin-bottom:16rpx}.tool-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14rpx}.tool-grid>view{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14rpx;height:146rpx;background:#fff;border:1rpx solid #edf3fb;box-shadow:0 3rpx 12rpx #0f447208;border-radius:16rpx}.tool-grid>view>text{font-size:24rpx;font-weight:650}.more-tools{font-size:23rpx;color:#087bff;text-align:center;padding:18rpx 0}.saved-line{display:flex;gap:12rpx;align-items:center;flex-wrap:wrap;font-size:21rpx;margin-bottom:14rpx}.saved-line text:not(:first-child){background:#edf6ff;border-radius:12rpx;padding:7rpx;color:#087bff}.resume-entry{display:flex;align-items:center;gap:14rpx;background:#f1e6ff;border-radius:16rpx;padding:10rpx 16rpx}.resume-entry image{width:72rpx;height:80rpx}.resume-entry>view{flex:1;font-size:26rpx;font-weight:700}.resume-entry>view>text{font-size:20rpx;font-weight:400;color:#9480aa}.resume-entry>text{font-size:38rpx;color:#9744f4}.home-note{text-align:center;font-size:19rpx;color:#98a9be;margin-top:16rpx}
 </style>

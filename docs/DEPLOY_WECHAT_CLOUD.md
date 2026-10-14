@@ -1,3 +1,5 @@
+> 此文档为旧资料平台架构。当前登科喵PDF部署请使用 [PDF_TOOLS.md](PDF_TOOLS.md) 和 deploy/pdf-tools.env.json.example。
+
 # 登科喵资料助手：微信云托管 + MySQL 8.0
 
 部署目标为微信小程序前端、微信云托管中的Spring Boot服务、MySQL 8.0、腾讯COS私有文件桶和腾讯云OCR。小程序AppID已设置为 `wx32e637fe68951abc`。当前代码已经具备容器与环境变量配置；尚未创建云资源或向云端发布。

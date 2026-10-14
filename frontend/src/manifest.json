@@ -1,7 +1,7 @@
 {
-  "name": "登科喵资料助手",
+  "name": "登科喵PDF",
   "appid": "",
-  "description": "让资料处理更简单",
+  "description": "无需注册的PDF转换与处理工具",
   "versionName": "0.1.0",
   "versionCode": "10",
   "transformPx": false,
@@ -13,7 +13,7 @@
     "usingComponents": true
   },
   "h5": {
-    "title": "登科喵资料助手"
+    "title": "登科喵PDF"
   },
   "uniStatistics": {
     "enable": false

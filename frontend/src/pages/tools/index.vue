@@ -1,20 +1,11 @@
-<template>
-  <view class="page"
-    ><view class="title">工具中心</view><view class="subtitle">高效 · 简单 · 便捷</view
-    ><view class="section-title">PDF工具</view
-    ><view class="grid"
-      ><ToolCard
-        v-for="tool in tools.filter((t) => t.id !== 'ocr')"
-        :key="tool.id"
-        :tool="tool" /></view
-    ><view class="section-title">文字识别</view
-    ><view class="grid"><ToolCard :tool="tools[3]" /></view
-    ><view class="notice"
-      >图片转PDF、PDF合并、PDF压缩与文字识别，覆盖日常资料处理。更多工具会在后续版本开放。</view
-    ></view
-  >
-</template>
+<template><view class="tool-list"><view class="tabs"><text :class="{active:!onlyFavorites}" @click="onlyFavorites=false">全部工具</text><text :class="{active:onlyFavorites}" @click="onlyFavorites=true">我的收藏 {{saved.length}}</text></view><view v-if="!items.length" class="tools-empty">还没有收藏的工具<br/>点击工具右侧 ☆ 添加常用收藏</view><view v-for="tool in items" :key="tool.id" class="tool-row"><view class="tool-open" @click="openPdfTool(tool.id)"><PdfIcon :label="tool.label" :color="tool.color"/><view>{{tool.title}}<text>{{tool.hint}}</text></view></view><text class="favorite" @click="toggle(tool.id)">{{saved.includes(tool.id)?'★':'☆'}}</text><text @click="openPdfTool(tool.id)">›</text></view></view></template>
 <script setup>
-import ToolCard from '../../components/ToolCard.vue'
-import { tools } from '../../lib/tools'
+import {ref,computed} from 'vue'
+import {onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
+import PdfIcon from '../../components/PdfIcon.vue'
+import {pdfTools,openPdfTool,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
+const onlyFavorites=ref(false),saved=ref([]),items=computed(()=>onlyFavorites.value?pdfTools.filter(t=>saved.value.includes(t.id)):pdfTools)
+onShow(()=>saved.value=favorites());onShareAppMessage(()=>pdfShare());onAddToFavorites(()=>({title:'登科喵PDF · 工具箱'}))
+function toggle(id){saved.value=toggleFavorite(id)}
 </script>
+<style scoped>.tool-list{padding:20rpx 26rpx;background:#f5faff;min-height:100vh}.tabs{display:flex;gap:16rpx;padding-bottom:20rpx}.tabs text{flex:1;text-align:center;background:#edf1f6;color:#6e7e95;border-radius:14rpx;padding:17rpx;font-size:26rpx}.tabs .active{background:#087bff;color:#fff}.tool-row{display:flex;align-items:center;gap:18rpx;background:white;border-radius:14rpx;padding:20rpx 16rpx;margin-bottom:12rpx;color:#536b8d}.tool-open{display:flex;gap:20rpx;align-items:center;flex:1;color:#182948;font-weight:700;font-size:27rpx}.tool-open>view{flex:1}.tool-open text{display:block;font-size:20rpx;font-weight:400;color:#91a0b6;margin-top:7rpx;line-height:1.5}.favorite{font-size:38rpx;color:#087bff;padding:8rpx}.tools-empty{padding:100rpx 15rpx;text-align:center;line-height:1.8;color:#7a8ca9;font-size:26rpx}</style>

@@ -9,7 +9,7 @@ export default {}
 }
 /* #endif */
 page {
-  background: #faf9ff;
+  background: #f5faff;
   color: #172642;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
   font-size: 28rpx;
@@ -54,7 +54,7 @@ button {
   box-shadow: 0 6rpx 24rpx #204c8810;
 }
 .primary {
-  background: #713cff;
+  background: #087bff;
   color: white;
   border-radius: 18rpx;
   padding: 24rpx;
@@ -66,8 +66,8 @@ button {
   color: white;
 }
 .secondary {
-  background: #eee9ff;
-  color: #713cff;
+  background: #eaf4ff;
+  color: #087bff;
   border-radius: 18rpx;
   padding: 22rpx;
   margin-top: 24rpx;
@@ -89,7 +89,7 @@ button {
   gap: 18rpx;
 }
 .notice {
-  background: #f2edff;
+  background: #eaf4ff;
   color: #6280a9;
   padding: 24rpx;
   border-radius: 18rpx;

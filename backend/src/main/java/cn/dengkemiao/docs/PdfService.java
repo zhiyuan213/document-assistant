@@ -35,17 +35,21 @@ public class PdfService {
         }
     }
     public byte[] compress(byte[] original) throws IOException {
+        return compress(original,0.65f);
+    }
+    public byte[] compress(byte[] original,float quality) throws IOException {
         try (PDDocument doc = load(original); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             validate(doc);
             long pixels=0;
             for (PDPage page : doc.getPages()) {
                 var resources = page.getResources();
+                if(resources==null)continue;
                 for (var name : resources.getXObjectNames()) {
                     if (resources.getXObject(name) instanceof PDImageXObject image && !image.isStencil() && image.getSoftMask()==null && image.getMask()==null) {
                         pixels+=(long)image.getWidth()*image.getHeight();
                         if ((long)image.getWidth()*image.getHeight()>25_000_000 || pixels>100_000_000) throw new ApiError(400,"PDF图片过大，请拆分文件后处理");
                         BufferedImage bitmap = image.getImage();
-                        PDImageXObject smaller = JPEGFactory.createFromImage(doc, bitmap, 0.65f);
+                        PDImageXObject smaller = JPEGFactory.createFromImage(doc, bitmap, quality);
                         if (smaller.getCOSObject().getLength()<image.getCOSObject().getLength()) resources.put(name,smaller);
                     }
                 }

@@ -1,85 +1,45 @@
 {
+  "globalStyle": {
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5faff",
+    "navigationBarTitleText": "登科喵PDF"
+  },
   "pages": [
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "登科喵资料助手",
+        "navigationBarTitleText": "登科喵PDF",
         "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/categories/index",
-      "style": {
-        "navigationBarTitleText": "资料分类"
-      }
-    },
-    {
-      "path": "pages/favorites/index",
-      "style": {
-        "navigationBarTitleText": "我的收藏"
-      }
-    },
-    {
-      "path": "pages/me/index",
-      "style": {
-        "navigationBarTitleText": "我的",
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/search/index",
-      "style": {
-        "navigationBarTitleText": "资料搜索",
-        "navigationStyle": "custom"
-      }
-    },
-    {
-      "path": "pages/resource/index",
-      "style": {
-        "navigationBarTitleText": "资料详情"
-      }
-    },
-    {
-      "path": "pages/downloads/index",
-      "style": {
-        "navigationBarTitleText": "下载管理"
       }
     },
     {
       "path": "pages/tools/index",
       "style": {
-        "navigationBarTitleText": "工具中心"
+        "navigationBarTitleText": "PDF工具"
       }
     },
     {
-      "path": "pages/files/index",
+      "path": "pages/pdf/work",
       "style": {
-        "navigationBarTitleText": "我的文件"
+        "navigationBarTitleText": "PDF工具"
       }
     },
     {
-      "path": "pages/process/index",
+      "path": "pages/pdf/credits",
       "style": {
-        "navigationBarTitleText": "资料处理"
+        "navigationBarTitleText": "更多次数"
       }
     },
     {
-      "path": "pages/vip/index",
+      "path": "pages/pdf/resume",
       "style": {
-        "navigationBarTitleText": "高级工具包"
+        "navigationBarTitleText": "登科喵简历助手"
       }
     }
   ],
-  "globalStyle": {
-    "navigationBarTextStyle": "black",
-    "navigationBarBackgroundColor": "#ffffff",
-    "backgroundColor": "#faf9ff"
-  },
   "tabBar": {
-    "color": "#a49bb7",
-    "selectedColor": "#783FFF",
     "backgroundColor": "#ffffff",
-    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
@@ -88,23 +48,14 @@
         "selectedIconPath": "static/tab-0-active.png"
       },
       {
-        "pagePath": "pages/categories/index",
-        "text": "分类",
+        "pagePath": "pages/tools/index",
+        "text": "工具",
         "iconPath": "static/tab-1.png",
         "selectedIconPath": "static/tab-1-active.png"
-      },
-      {
-        "pagePath": "pages/favorites/index",
-        "text": "收藏",
-        "iconPath": "static/tab-2.png",
-        "selectedIconPath": "static/tab-2-active.png"
-      },
-      {
-        "pagePath": "pages/me/index",
-        "text": "我的",
-        "iconPath": "static/tab-3.png",
-        "selectedIconPath": "static/tab-3-active.png"
       }
-    ]
+    ],
+    "selectedColor": "#087bff",
+    "borderStyle": "white",
+    "color": "#99a4b7"
   }
 }

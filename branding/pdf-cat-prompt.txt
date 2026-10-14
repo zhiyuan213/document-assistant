@@ -1,0 +1,5 @@
+Mode: imagegen built-in tool, transparent background.
+Original: branding/pdf-cat-original.png
+Web asset: frontend/src/static/brand/pdf-cat.png
+
+Create a single small friendly mascot illustration for Chinese mini program Dengke Miao PDF. Transparent background. Cute 2D kawaii gray and white kitten, black thin clean outlines, white cheeks and belly, gray ears and gray patch on top of head, round black eyes, tiny pink nose, peach blush, cheerful small smile. Full body sitting with a fluffy curled gray tail, holding a bright red paper document in its front paws labeled exactly PDF in white bold letters. Simple flat/vector-like cartoon shading, crisp shapes, minimal details, designed to read at 100 pixels. No extra words, no background, no orange fur, no graduation hat, no accessories. Centered full character with generous transparent margins.

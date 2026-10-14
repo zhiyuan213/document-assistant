@@ -1,0 +1,26 @@
+-- 新版PDF工具使用独立表，不删除旧表，不迁移旧用户文件。
+CREATE TABLE IF NOT EXISTS pdf_visitor (
+ id CHAR(36) PRIMARY KEY, token_hash CHAR(64) NOT NULL UNIQUE,
+ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS pdf_daily_quota (
+ visitor_id CHAR(36) NOT NULL, quota_date DATE NOT NULL, used_count INT NOT NULL DEFAULT 0,
+ PRIMARY KEY(visitor_id,quota_date), FOREIGN KEY(visitor_id) REFERENCES pdf_visitor(id)
+);
+CREATE TABLE IF NOT EXISTS pdf_tool_job (
+ id CHAR(36) PRIMARY KEY, visitor_id CHAR(36) NOT NULL, tool VARCHAR(24) NOT NULL,
+ status VARCHAR(16) NOT NULL, progress INT NOT NULL DEFAULT 0, quota_date DATE NOT NULL,
+ extension VARCHAR(8), size_bytes BIGINT, error_message VARCHAR(256),
+ expires_at TIMESTAMP NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ INDEX idx_pdf_job_expiry(expires_at), FOREIGN KEY(visitor_id) REFERENCES pdf_visitor(id)
+);
+CREATE TABLE IF NOT EXISTS pdf_credit_balance (
+ visitor_id CHAR(36) PRIMARY KEY, remaining INT NOT NULL DEFAULT 0,
+ FOREIGN KEY(visitor_id) REFERENCES pdf_visitor(id)
+);
+CREATE TABLE IF NOT EXISTS pdf_purchase (
+ id CHAR(36) PRIMARY KEY, visitor_id CHAR(36) NOT NULL, package_id VARCHAR(16) NOT NULL,
+ amount_fen INT NOT NULL, credits INT NOT NULL, status VARCHAR(16) NOT NULL,
+ transaction_id VARCHAR(64) UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY(visitor_id) REFERENCES pdf_visitor(id)
+);

@@ -11,7 +11,7 @@ const shapes = [
 ];
 (async () => {
   for (let i=0;i<shapes.length;i++) for (const active of [false,true]) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="${active?'#783fff':'#aaa3bb'}">${shapes[i]}</svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="${active?'#087bff':'#99a4b7'}">${shapes[i]}</svg>`;
     await sharp(Buffer.from(svg)).resize(64,64).png().toFile(path.join(root, `tab-${i}${active?'-active':''}.png`));
   }
 })();

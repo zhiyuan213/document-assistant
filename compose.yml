@@ -20,7 +20,7 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/dengke?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       DB_PASSWORD: ${DB_PASSWORD:-local-development-only}
       DEV_LOGIN: ${DEV_LOGIN:-true}
-      SEED_DEMO: ${SEED_DEMO:-true}
+      SEED_DEMO: ${SEED_DEMO:-false}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:5173}
       WX_APP_ID: ${WX_APP_ID:-}
       WX_SECRET: ${WX_SECRET:-}
