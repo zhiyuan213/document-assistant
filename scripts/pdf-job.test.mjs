@@ -1,6 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { pollPdfJob } from '../frontend/src/lib/pdf-job.mjs'
+import { readFile } from 'node:fs/promises'
+const apiSource = await readFile(new URL('../frontend/src/lib/pdf-api.js', import.meta.url), 'utf8')
+// Exercise the actual pure polling export without loading uni-app's browser-only configuration.
+const pollSource = apiSource.slice(apiSource.indexOf('export async function pollPdfJob'))
+const { pollPdfJob } = await import('data:text/javascript,' + encodeURIComponent(pollSource))
 const missing = () => Object.assign(new Error('not found'), { status: 404 })
 test('new task can become visible after a transient 404 without resubmission', async () => {
   let reads = 0

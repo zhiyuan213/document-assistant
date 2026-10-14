@@ -30,8 +30,7 @@ import {ref,computed} from 'vue'
 import {onLoad,onUnload,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
-import {pdfRequest,submitPdf,savePdf} from '../../lib/pdf-api'
-import {pollPdfJob} from '../../lib/pdf-job.mjs'
+import {pdfRequest,submitPdf,savePdf,pollPdfJob} from '../../lib/pdf-api'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),quota=ref(null),stagePercent=ref(0),stage=ref('正在上传文件…')
 const billingEnabled=ref(null)
 const splitMode=ref('pages'),ranges=ref(''),orientation=ref('portrait'),format=ref('jpg'),watermark=ref(''),password=ref(''),confirmation=ref('')
