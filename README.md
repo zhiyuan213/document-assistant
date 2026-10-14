@@ -22,6 +22,8 @@ docker compose up -d --build
 
 ## 微信开发者工具
 
+本仓库提交前自动执行完整检查。首次拉取执行 `git config core.hooksPath .githooks`；手动检查可运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pre-commit-check.ps1`。测试或构建、模块依赖检查失败时会阻止提交。编译检查不等同于真机运行验收。
+
 ```powershell
 npm run build:mp-weixin --prefix frontend
 ```
