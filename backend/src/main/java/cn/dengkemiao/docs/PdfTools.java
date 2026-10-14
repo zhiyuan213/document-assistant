@@ -35,16 +35,18 @@ public class PdfTools {
             return out(pdf.images(files,"landscape".equals(options.get("orientation")),false),"pdf");
         }
         if(tool.equals("merge")) return out(pdf.merge(files),"pdf");
-        boolean imageWatermark=tool.equals("watermark")&&"image".equals(options.get("watermarkMode"));
+        if(tool.equals("compare")) return PdfExtras.compare(files);
+        boolean imageWatermark=tool.equals("sign")||tool.equals("watermark")&&"image".equals(options.get("watermarkMode"));
         if(files.size()!=(imageWatermark?2:1)) throw new ApiError(400,imageWatermark?"请选择PDF和水印图片":"此工具每次处理一个文件");
         byte[] input=files.get(0);
         if(tool.equals("compress")) return out(pdf.compress(input,switch(options.getOrDefault("compression","standard")){case "light"->0.85f;case "strong"->0.40f;default->0.65f;}),"pdf");
-        if(tool.equals("word-pdf")) return office(input,filename);
+        if(Set.of("word-pdf","excel-pdf","ppt-pdf").contains(tool)) return office(input,filename,tool);
         String password=options.getOrDefault("password","");
         try(PDDocument doc=Loader.loadPDF(input,tool.equals("decrypt")?password:"")) {
             if(doc.getNumberOfPages()<1||doc.getNumberOfPages()>200) throw new ApiError(400,"支持1至200页PDF");
             if(doc.isEncrypted()&&!tool.equals("decrypt")) throw new ApiError(400,"请先使用PDF解密工具");
             switch(tool) {
+                case "redact": case "markdown": case "crop": case "sign": case "extract-images": case "ocr": case "repair": return PdfExtras.run(tool,doc,files,options);
                 case "rotate":
                     int angle;
                     try {angle=Integer.parseInt(options.getOrDefault("angle","90"));}catch(NumberFormatException e){throw new ApiError(400,"旋转角度请选择90、180或270度");}
@@ -55,7 +57,7 @@ public class PdfTools {
                     var selected=pageSelection(options.getOrDefault("pages",""),doc.getNumberOfPages(),false);
                     if(tool.equals("reorder")&&selected.size()!=doc.getNumberOfPages())throw new ApiError(400,"调整页序需填写全部页码，每页仅出现一次");
                     if(tool.equals("remove-pages")){var removed=new HashSet<>(selected);selected=new ArrayList<>();for(int i=0;i<doc.getNumberOfPages();i++)if(!removed.contains(i))selected.add(i);if(selected.isEmpty())throw new ApiError(400,"不能删除全部页面，请至少保留一页");}
-                    try(var arranged=new PDDocument();var bytes=new ByteArrayOutputStream()){for(int index:selected)arranged.importPage(doc.getPage(index));arranged.save(bytes);return out(bytes.toByteArray(),"pdf");}
+                    try(var arranged=new PDDocument();var bytes=new ByteArrayOutputStream()){for(int index:selected)arranged.importPage(doc.getPage(index)).setResources(doc.getPage(index).getResources());arranged.save(bytes);return out(bytes.toByteArray(),"pdf");}
                 case "page-numbers":
                     var numberFont=new PDType1Font(Standard14Fonts.FontName.HELVETICA);
                     int start;
@@ -122,7 +124,7 @@ public class PdfTools {
         if(groups.size()>200)throw new ApiError(400,"最多拆分200个文件");
         try(var result=new ByteArrayOutputStream();var zip=new ZipOutputStream(result)) {
             int index=0;for(int[] group:groups)try(var part=new PDDocument();var bytes=new ByteArrayOutputStream()){
-                for(int i=group[0];i<=group[1];i++)part.importPage(source.getPage(i-1));part.save(bytes);
+                for(int i=group[0];i<=group[1];i++)part.importPage(source.getPage(i-1)).setResources(source.getPage(i-1).getResources());part.save(bytes);
                 zip.putNextEntry(new ZipEntry("part-"+(++index)+".pdf"));zip.write(bytes.toByteArray());zip.closeEntry();
             }zip.finish();return out(result.toByteArray(),"zip");
         }
@@ -165,17 +167,18 @@ public class PdfTools {
             var state=new PDExtendedGraphicsState();state.setNonStrokingAlphaConstant(0.18f);stream.setGraphicsStateParameters(state);stream.drawImage(image,box.getLowerLeftX()+(box.getWidth()-w)/2,box.getLowerLeftY()+(box.getHeight()-h)/2,w,h);
         }
     }
-    private Output office(byte[] input,String name) throws Exception {
-        String ext=name.toLowerCase().endsWith(".docx")?"docx":name.toLowerCase().endsWith(".doc")?"doc":"";
-        if(ext.isEmpty())throw new ApiError(400,"请选择doc或docx文件");
+    private Output office(byte[] input,String name,String tool) throws Exception {
+        Set<String> allowed=switch(tool){case "excel-pdf"->Set.of("xls","xlsx");case "ppt-pdf"->Set.of("ppt","pptx");default->Set.of("doc","docx");};
+        String ext=name.substring(name.lastIndexOf('.')+1).toLowerCase();
+        if(!allowed.contains(ext))throw new ApiError(400,"请选择"+String.join("或",allowed)+"文件");
         Path dir=Files.createTempDirectory("dengke-office-");
         try {
             Path source=dir.resolve("input."+ext);Files.write(source,input);
             Process process;
             try {process=new ProcessBuilder(office,"-env:UserInstallation="+dir.resolve("profile").toUri(),"--headless","--convert-to","pdf","--outdir",dir.toString(),source.toString()).redirectErrorStream(true).redirectOutput(dir.resolve("convert.log").toFile()).start();}
-            catch(IOException e){throw new ApiError(503,"Word转换组件未安装");}
-            if(!process.waitFor(90,TimeUnit.SECONDS)){process.destroyForcibly();process.waitFor(5,TimeUnit.SECONDS);throw new ApiError(504,"Word转换超时");}
-            Path result=dir.resolve("input.pdf");if(process.exitValue()!=0||!Files.exists(result))throw new ApiError(400,"Word转换失败，请检查文档是否损坏或加密");
+            catch(IOException e){throw new ApiError(503,"Office转换组件未安装");}
+            if(!process.waitFor(90,TimeUnit.SECONDS)){process.destroyForcibly();process.waitFor(5,TimeUnit.SECONDS);throw new ApiError(504,"Office转换超时");}
+            Path result=dir.resolve("input.pdf");if(process.exitValue()!=0||!Files.exists(result))throw new ApiError(400,"Office转换失败，请检查文档是否损坏或加密");
             return out(Files.readAllBytes(result),"pdf");
         } finally {try(var paths=Files.walk(dir)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}}
     }

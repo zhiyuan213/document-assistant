@@ -1,6 +1,6 @@
 <template>
   <view class="pdf-home" :style="headerPadding(20,true)">
-    <view class="home-actions"><button open-type="share">↗ 分享</button><button @click="collectApp">☆ 收藏</button></view>
+    <PdfActions @favorite="collectApp"/>
     <view class="home-hero"><view><view class="brand-title">登科喵PDF</view><view class="brand-tag">简单 · 高效 · 安全</view><view class="brand-desc">无需注册，选好文件即可处理。<br/>结果下载到手机，30分钟后自动清理。</view></view><image src="/static/brand/pdf-cat.png" mode="aspectFit"/></view>
     <view class="daily-line"><view><text>{{member?.active?'月卡会员':billingEnabled===false?'免费使用 · 不限次数':billingEnabled===true?'每日免费处理 3 次':'PDF 文件处理工具'}}</text><view v-if="member?.active">有效至 {{expiryText(member.expiresAt)}}（北京时间）</view><view v-if="member?.active && billingEnabled===true">会员有效期内不限量处理</view><view v-if="member?.active && billingEnabled===false">当前免费开放 · 不限次数</view><view v-if="member && !member.active && member.expiresAt">月卡已于 {{expiryText(member.expiresAt)}} 到期</view></view><text v-if="billingEnabled===true" @click="credits">月卡 ¥9.90 ›</text></view>
     <view class="tool-grid"><view v-for="tool in pdfTools.slice(0,9)" :key="tool.id" @click="openPdfTool(tool.id)"><PdfIcon :label="tool.label" :color="tool.color"/><text>{{tool.title}}</text></view></view>
@@ -14,6 +14,7 @@
 import {ref} from 'vue'
 import {onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
+import PdfActions from '../../components/PdfActions.vue'
 import {pdfTools,openPdfTool,favorites,pdfShare} from '../../lib/pdf-tools'
 import {headerPadding} from '../../lib/layout'
 import {pdfRequest} from '../../lib/pdf-api'

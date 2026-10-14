@@ -24,7 +24,7 @@ import jakarta.annotation.PreDestroy;
 public class PdfToolController {
     private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx;
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4));
-    private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers");
+    private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers","excel-pdf","ppt-pdf","crop","sign","extract-images","ocr","repair","markdown","compare","redact");
     @Value("${PDF_TEMP_DIR:./data/pdf-temp}") private String directory;
     @Value("${PDF_BILLING_ENABLED:false}") private boolean billingEnabled;
     public PdfToolController(JdbcTemplate db,PdfTools tools,PlatformTransactionManager manager){this.db=db;this.tools=tools;this.tx=new TransactionTemplate(manager);}
@@ -65,7 +65,7 @@ public class PdfToolController {
         for(var file:files){if(file.isEmpty()||file.getSize()>20*1024*1024)throw new ApiError(400,"每个文件需小于20MB且不能为空");total+=file.getSize();if(total>60*1024*1024)throw new ApiError(400,"总文件大小不能超过60MB");content.add(file.getBytes());}
         if(workers.getQueue().remainingCapacity()==0)throw new ApiError(429,"当前处理繁忙，请稍后重试");
         // Epoch date means no quota was reserved, including when cleaning jobs after a config change.
-        int units=files.size()-(tool.equals("watermark")&&"image".equals(params.get("watermarkMode"))?1:0);
+        int units=files.size()-(tool.equals("sign")||tool.equals("watermark")&&"image".equals(params.get("watermarkMode"))?1:0);
         LocalDate day=billingEnabled?today():LocalDate.ofEpochDay(0);if(billingEnabled)reserve(owner,day,units);String id=UUID.randomUUID().toString();
         try {
             db.update("INSERT INTO pdf_tool_job(id,visitor_id,tool,status,progress,quota_date,quota_units,expires_at) VALUES (?,?,?,'queued',10,?,?,TIMESTAMPADD(MINUTE,30,CURRENT_TIMESTAMP))",id,owner,tool,day,units);

@@ -1,10 +1,10 @@
 <template>
   <view class="pdf-work">
-    <view class="tool-actions"><button open-type="share">分享 ↗</button><button @click="favorite">{{ liked ? '★ 已收藏' : '☆ 收藏工具' }}</button></view>
+    <PdfActions :liked="liked" @favorite="favorite"/>
     <view v-if="error" class="error-message" role="alert">{{error}}</view>
     <template v-if="!busy && !result">
       <view class="intro"><PdfIcon :label="tool.label" :color="tool.color"/><view class="intro-title">{{ tool.title }}</view><text>{{ tool.hint }}</text></view>
-      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? (['merge','images'].includes(tool.id) ? '继续添加文件' : '更换文件') : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
+      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? (['merge','images','compare'].includes(tool.id) ? '继续添加文件' : '更换文件') : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
       <view v-if="tool.id==='merge'" class="pdf-tip">带密码的 PDF 无法直接合并，请先使用“PDF 解密”，再选择解密后的文件合并。<text class="decrypt-link" @click="uni.navigateTo({url:'/pages/pdf/work?tool=decrypt'})">去解密 ›</text></view>
       <!-- #ifdef MP-WEIXIN -->
       <view v-if="tool.id !== 'images'" class="pdf-tip">文件从微信聊天中选择。手机里的 PDF / Word 请先发送给“文件传输助手”，再从该聊天选择文件。选择文件不会向聊天发送消息。</view>
@@ -14,6 +14,9 @@
       <view v-if="['rotate','extract','remove-pages','reorder'].includes(tool.id)" class="options"><view class="option-title">{{tool.id==='reorder'?'全部页码的新顺序':'处理页码'}}</view><input v-model="pages" maxlength="1000" :placeholder="tool.id==='rotate'?'留空处理全部页面，例如 1-3,5':tool.id==='reorder'?'例如 3,1,2；填写全部页码':'例如 1-3,5'"/></view>
       <view v-if="tool.id==='rotate'" class="options"><view class="option-title">顺时针旋转</view><view class="choices"><text v-for="degree in [90,180,270]" :key="degree" :class="{active:angle===degree}" @click="angle=degree">{{degree}}°</text></view></view>
       <view v-if="tool.id==='page-numbers'" class="options"><view class="option-title">起始页码</view><input v-model="startNumber" type="number" maxlength="4" placeholder="1 至 9999"/><view class="choices"><text :class="{active:numberPosition==='bottom'}" @click="numberPosition='bottom'">底部居中</text><text :class="{active:numberPosition==='top'}" @click="numberPosition='top'">顶部居中</text></view></view>
+      <view v-if="tool.id==='crop'" class="options"><view class="option-title">裁剪边距（页面宽高的百分比）</view><view v-for="edge in cropEdges" :key="edge.id"><text>{{edge.title}}</text><input v-model="cropMargins[edge.id]" type="digit" placeholder="0 至 100，例如5"/></view></view>
+      <view v-if="tool.id==='redact'" class="options"><view class="option-title">每页遮盖范围（百分比）</view><view v-for="edge in redactFields" :key="edge.id"><text>{{edge.title}}</text><input v-model="redactRegion[edge.id]" type="digit" placeholder="0 至 100"/></view><view class="pdf-tip">所有页面都会应用同一区域。下载后请打开检查遮盖位置，确认无遗漏再发送。</view></view>
+      <view v-if="tool.id==='sign'" class="options"><view class="pdf-tip" @click="chooseWatermark">{{watermarkFile?'已选择签名图片，点击更换':'选择签名 JPG / PNG，建议使用透明背景PNG'}}</view><view class="option-title">签名页码</view><input v-model="signPage" type="number"/><view class="option-title">位置：从左、从上百分比 / 占页宽百分比</view><input v-model="signX" type="digit" placeholder="从左百分比"/><input v-model="signY" type="digit" placeholder="从上百分比"/><input v-model="signWidth" type="digit" placeholder="宽度百分比"/></view>
       <view v-if="tool.id==='images'" class="options"><view class="option-title">页面方向 · 按当前图片顺序生成</view><view class="choices"><text :class="{active:orientation==='portrait'}" @click="orientation='portrait'">A4 竖版</text><text :class="{active:orientation==='landscape'}" @click="orientation='landscape'">A4 横版</text></view></view>
       <view v-if="tool.id==='pdf-images'" class="options"><view class="option-title">输出格式</view><view class="choices"><text :class="{active:format==='jpg'}" @click="format='jpg'">JPG</text><text :class="{active:format==='png'}" @click="format='png'">PNG</text></view></view>
       <view v-if="tool.id==='compress'" class="options"><view class="option-title">压缩强度</view><view class="choices"><text v-for="p in compressionLevels" :key="p.id" :class="{active:compression===p.id}" @click="compression=p.id">{{p.title}}</text></view></view>
@@ -33,6 +36,7 @@
 import {ref,computed} from 'vue'
 import {onLoad,onUnload,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
+import PdfActions from '../../components/PdfActions.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
 import {pdfRequest,submitPdf,savePdf,openSavedPdf} from '../../lib/pdf-api'
 import {pollPdfJob} from '../../lib/pdf-job'
@@ -40,6 +44,9 @@ const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false)
 const billingEnabled=ref(null)
 const memberActive=ref(false)
 const pages=ref(''),angle=ref(90),startNumber=ref('1'),numberPosition=ref('bottom')
+const cropMargins=ref({left:'5',right:'5',top:'5',bottom:'5'}),cropEdges=[{id:'left',title:'左边'},{id:'right',title:'右边'},{id:'top',title:'上边'},{id:'bottom',title:'下边'}]
+const signPage=ref('1'),signX=ref('60'),signY=ref('60'),signWidth=ref('25')
+const redactRegion=ref({redactX:'10',redactY:'10',redactWidth:'30',redactHeight:'10'}),redactFields=[{id:'redactX',title:'从左'},{id:'redactY',title:'从上'},{id:'redactWidth',title:'宽度'},{id:'redactHeight',title:'高度'}]
 const preparedFile=ref(null)
 const splitMode=ref('pages'),ranges=ref(''),orientation=ref('portrait'),format=ref('jpg'),watermark=ref(''),password=ref(''),confirmation=ref('')
 const compression=ref('standard'),imageOutput=ref('merged'),watermarkMode=ref('text'),watermarkFile=ref(null),compressionLevels=[{id:'light',title:'轻量 · 高清'},{id:'standard',title:'标准'},{id:'strong',title:'强力 · 小文件'}]
@@ -59,7 +66,7 @@ function size(n){return n>1024*1024?(n/1024/1024).toFixed(1)+' MB':Math.ceil((n|
 function favorite(){liked.value=toggleFavorite(tool.value.id).includes(tool.value.id);uni.showToast({title:liked.value?'已收藏常用工具':'已取消收藏',icon:'none'})}
 async function refreshQuota(){try{const r=await pdfRequest('/quota');quota.value=r.remaining;billingEnabled.value=r.billingEnabled!==false;memberActive.value=r.membership?.active===true}catch(e){if(!error.value)error.value=e.message}}
 function choose(){
- const max=tool.value.id==='merge'?10:tool.value.id==='images'?20:1
+ const max=tool.value.id==='compare'?2:tool.value.id==='merge'?10:tool.value.id==='images'?20:1
  const success=r=>{const files=r.tempFiles.map(f=>({path:f.path||f.tempFilePath,name:f.name||('image.'+(f.path?.split('.').pop()||'jpg')),size:f.size}));if(files.some(f=>f.size>20*1024*1024)){uni.showToast({title:'单个文件不能超过20MB',icon:'none'});return}selected.value=max===1?files.slice(0,1):[...selected.value,...files].slice(0,max);error.value=''}
  if(selected.value.length>=max&&max>1){uni.showToast({title:'已达到文件数量上限',icon:'none'});return}
  if(tool.value.id==='images'){uni.chooseImage({count:Math.min(9,max-selected.value.length),success});return}
@@ -72,9 +79,9 @@ function choose(){
 }
 function move(i){selected.value.splice(i-1,0,selected.value.splice(i,1)[0])}
 function chooseWatermark(){uni.chooseImage({count:1,success:r=>{const f=r.tempFiles[0];if(f.size>20*1024*1024){error.value='水印图片不能超过20MB';return}watermarkFile.value={path:f.path,size:f.size,name:'watermark.'+(f.path.split('.').pop()||'png')}}})}
-async function run(){if(busy.value)return;error.value='';if(tool.value.id==='encrypt'&&(password.value.length<6||password.value.length>64)){error.value='密码需为 6 至 64 位';uni.showToast({title:error.value,icon:'none'});return}if(tool.value.id==='encrypt'&&password.value!==confirmation.value){error.value='两次密码不一致';return}if(tool.value.id==='merge'&&selected.value.length<2){error.value='请选择至少两个PDF';return}if(tool.value.id==='split'&&splitMode.value==='ranges'&&!ranges.value.trim()){error.value='请输入页码范围';return}
+async function run(){if(busy.value)return;error.value='';if(tool.value.id==='encrypt'&&(password.value.length<6||password.value.length>64)){error.value='密码需为 6 至 64 位';uni.showToast({title:error.value,icon:'none'});return}if(tool.value.id==='encrypt'&&password.value!==confirmation.value){error.value='两次密码不一致';return}if(['merge','compare'].includes(tool.value.id)&&selected.value.length<2){error.value='请选择至少两个PDF';return}if(tool.value.id==='split'&&splitMode.value==='ranges'&&!ranges.value.trim()){error.value='请输入页码范围';return}
  busy.value=true;stagePercent.value=0;stage.value='正在上传文件…'
- try{const imageMark=tool.value.id==='watermark'&&watermarkMode.value==='image';if(imageMark&&!watermarkFile.value)throw new Error('请选择水印图片');const created=await submitPdf(tool.value.id,imageMark?[...selected.value,watermarkFile.value]:selected.value,{pages:pages.value,angle:angle.value,start:startNumber.value,position:numberPosition.value,ranges:splitMode.value==='ranges'?ranges.value:'',orientation:orientation.value,format:format.value,text:watermark.value,password:password.value,compression:compression.value,imageOutput:imageOutput.value,watermarkMode:watermarkMode.value});password.value='';confirmation.value='';
+ try{const imageMark=tool.value.id==='sign'||tool.value.id==='watermark'&&watermarkMode.value==='image';if(imageMark&&!watermarkFile.value)throw new Error(tool.value.id==='sign'?'请选择签名图片':'请选择水印图片');const created=await submitPdf(tool.value.id,imageMark?[...selected.value,watermarkFile.value]:selected.value,{...redactRegion.value,...cropMargins.value,signPage:signPage.value,signX:signX.value,signY:signY.value,signWidth:signWidth.value,pages:pages.value,angle:angle.value,start:startNumber.value,position:numberPosition.value,ranges:splitMode.value==='ranges'?ranges.value:'',orientation:orientation.value,format:format.value,text:watermark.value,password:password.value,compression:compression.value,imageOutput:imageOutput.value,watermarkMode:watermarkMode.value});password.value='';confirmation.value='';
   const job=await pollPdfJob(()=>pdfRequest('/jobs/'+created.id),{active:()=>alive,onProgress:job=>{stagePercent.value=job.progress;stage.value=job.status==='syncing'?'文件已上传，正在同步任务状态…':job.status==='queued'?'文件已上传，等待处理…':'正在处理文件…'}})
   if(job){result.value=job;selected.value=[]}
  }catch(e){error.value=e.message;if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}finally{busy.value=false;if(alive)await refreshQuota()}}
