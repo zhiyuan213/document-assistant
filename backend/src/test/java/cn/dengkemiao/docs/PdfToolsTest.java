@@ -9,6 +9,23 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PdfToolsTest {
+    @Test void pageToolsPreserveRequestedOrderAndValidateInputs()throws Exception {
+        byte[] input;
+        try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var bytes=new ByteArrayOutputStream()){
+            for(String text:List.of("FIRST","SECOND","THIRD")){var page=new org.apache.pdfbox.pdmodel.PDPage();doc.addPage(page);try(var stream=new org.apache.pdfbox.pdmodel.PDPageContentStream(doc,page)){stream.beginText();stream.setFont(new org.apache.pdfbox.pdmodel.font.PDType1Font(org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA),12);stream.newLineAtOffset(30,100);stream.showText(text);stream.endText();}}doc.save(bytes);input=bytes.toByteArray();
+        }
+        var reordered=tools.run("reorder",List.of(input),"a.pdf",Map.of("pages","3,1,2"));
+        try(var doc=Loader.loadPDF(reordered.bytes())){String text=new org.apache.pdfbox.text.PDFTextStripper().getText(doc);assertTrue(text.indexOf("THIRD")<text.indexOf("FIRST"));assertTrue(text.indexOf("FIRST")<text.indexOf("SECOND"));}
+        var extracted=tools.run("extract",List.of(input),"a.pdf",Map.of("pages","1,3"));try(var doc=Loader.loadPDF(extracted.bytes())){assertEquals(2,doc.getNumberOfPages());assertFalse(new org.apache.pdfbox.text.PDFTextStripper().getText(doc).contains("SECOND"));}
+        var removed=tools.run("remove-pages",List.of(input),"a.pdf",Map.of("pages","1-2"));try(var doc=Loader.loadPDF(removed.bytes())){assertEquals(1,doc.getNumberOfPages());assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(doc).contains("THIRD"));}
+        var rotated=tools.run("rotate",List.of(input),"a.pdf",Map.of("pages","2","angle","270"));try(var doc=Loader.loadPDF(rotated.bytes())){assertEquals(0,doc.getPage(0).getRotation());assertEquals(270,doc.getPage(1).getRotation());doc.getPage(1).setRotation(0);assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(doc).contains("SECOND"));}
+        var numbered=tools.run("page-numbers",List.of(input),"a.pdf",Map.of("start","8","position","top"));try(var doc=Loader.loadPDF(numbered.bytes())){var text=new org.apache.pdfbox.text.PDFTextStripper();text.setStartPage(3);assertTrue(text.getText(doc).contains("10"));}
+        for(var option:List.of(Map.of("pages","1,1"),Map.of("pages","4"),Map.of("pages","1,"),Map.of("pages","")))assertThrows(ApiError.class,()->tools.run("extract",List.of(input),"a.pdf",option));
+        assertThrows(ApiError.class,()->tools.run("remove-pages",List.of(input),"a.pdf",Map.of("pages","1-3")));
+        assertThrows(ApiError.class,()->tools.run("reorder",List.of(input),"a.pdf",Map.of("pages","1,2")));
+        assertThrows(ApiError.class,()->tools.run("rotate",List.of(input),"a.pdf",Map.of("angle","45")));
+        assertThrows(ApiError.class,()->tools.run("page-numbers",List.of(input),"a.pdf",Map.of("start","0")));
+    }
     @Test void splittingPreservesInheritedFontsAndRejectsTrailingSeparator() throws Exception {
         byte[] input;
         try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var out=new ByteArrayOutputStream()) {

@@ -45,6 +45,31 @@ public class PdfTools {
             if(doc.getNumberOfPages()<1||doc.getNumberOfPages()>200) throw new ApiError(400,"支持1至200页PDF");
             if(doc.isEncrypted()&&!tool.equals("decrypt")) throw new ApiError(400,"请先使用PDF解密工具");
             switch(tool) {
+                case "rotate":
+                    int angle;
+                    try {angle=Integer.parseInt(options.getOrDefault("angle","90"));}catch(NumberFormatException e){throw new ApiError(400,"旋转角度请选择90、180或270度");}
+                    if(!Set.of(90,180,270).contains(angle))throw new ApiError(400,"旋转角度请选择90、180或270度");
+                    for(int index:pageSelection(options.getOrDefault("pages",""),doc.getNumberOfPages(),true))doc.getPage(index).setRotation(Math.floorMod(doc.getPage(index).getRotation()+angle,360));
+                    break;
+                case "extract": case "remove-pages": case "reorder":
+                    var selected=pageSelection(options.getOrDefault("pages",""),doc.getNumberOfPages(),false);
+                    if(tool.equals("reorder")&&selected.size()!=doc.getNumberOfPages())throw new ApiError(400,"调整页序需填写全部页码，每页仅出现一次");
+                    if(tool.equals("remove-pages")){var removed=new HashSet<>(selected);selected=new ArrayList<>();for(int i=0;i<doc.getNumberOfPages();i++)if(!removed.contains(i))selected.add(i);if(selected.isEmpty())throw new ApiError(400,"不能删除全部页面，请至少保留一页");}
+                    try(var arranged=new PDDocument();var bytes=new ByteArrayOutputStream()){for(int index:selected)arranged.importPage(doc.getPage(index));arranged.save(bytes);return out(bytes.toByteArray(),"pdf");}
+                case "page-numbers":
+                    var numberFont=new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+                    int start;
+                    try {start=Integer.parseInt(options.getOrDefault("start","1"));}catch(NumberFormatException e){throw new ApiError(400,"起始页码需为1至9999的整数");}
+                    if(start<1||start>9999)throw new ApiError(400,"起始页码需为1至9999的整数");
+                    String position=options.getOrDefault("position","bottom");if(!Set.of("bottom","top").contains(position))throw new ApiError(400,"页码位置请选择顶部或底部");
+                    int number=start;
+                    for(PDPage page:doc.getPages()){
+                        if(page.getRotation()!=0)throw new ApiError(400,"此PDF含旋转页面，暂不支持添加页码");
+                        var box=page.getCropBox();if(box.getHeight()<48)throw new ApiError(400,"页面高度过小，无法添加页码");
+                        String label=Integer.toString(number++);float width=numberFont.getStringWidth(label)/1000*11;
+                        try(var stream=new PDPageContentStream(doc,page,PDPageContentStream.AppendMode.APPEND,true,true)){stream.beginText();stream.setNonStrokingColor(Color.DARK_GRAY);stream.setFont(numberFont,11);stream.newLineAtOffset(box.getLowerLeftX()+(box.getWidth()-width)/2,position.equals("top")?box.getUpperRightY()-22:box.getLowerLeftY()+16);stream.showText(label);stream.endText();}
+                    }
+                    break;
                 case "pdf-word": return word(doc);
                 case "split": return split(doc,options.getOrDefault("ranges",""));
                 case "pdf-images": return images(doc,options.getOrDefault("format","jpg"));
@@ -65,6 +90,14 @@ public class PdfTools {
     }
     private Output out(byte[] bytes,String ext) {
         return new Output(bytes,ext,switch(ext){case "pdf"->"application/pdf";case "docx"->"application/vnd.openxmlformats-officedocument.wordprocessingml.document";default->"application/zip";});
+    }
+    private List<Integer> pageSelection(String value,int count,boolean allowAll) {
+        if(value.isBlank()){if(!allowAll)throw new ApiError(400,"请输入页码，例如1-3,5");var all=new ArrayList<Integer>();for(int i=0;i<count;i++)all.add(i);return all;}
+        if(value.length()>1000)throw new ApiError(400,"页码范围过长");
+        var pages=new ArrayList<Integer>();var seen=new HashSet<Integer>();
+        try {for(String group:value.split(",",-1)){String[] ends=group.trim().split("-",-1);if(ends.length>2)throw new NumberFormatException();int first=Integer.parseInt(ends[0]),last=ends.length==2?Integer.parseInt(ends[1]):first;if(first<1||last<first||last>count)throw new NumberFormatException();for(int i=first;i<=last;i++){if(!seen.add(i-1))throw new ApiError(400,"页码不能重复，请检查输入");pages.add(i-1);}}}
+        catch(NumberFormatException e){throw new ApiError(400,"页码格式为1-3,5，且不能超出文件总页数");}
+        return pages;
     }
     private Output word(PDDocument source) throws IOException {
         try(var doc=new XWPFDocument();var result=new ByteArrayOutputStream()) {

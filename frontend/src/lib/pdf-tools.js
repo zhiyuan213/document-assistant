@@ -9,6 +9,11 @@ export const pdfTools = [
   { id: 'watermark', title: 'PDF 加水印', label: '印', color: '#ff3297', hint: '为 PDF 每一页添加半透明文字或图片水印。', accept: ['pdf'] },
   { id: 'encrypt', title: 'PDF 加密', label: '锁', color: '#9a36ef', hint: '设置打开密码，使用 AES-256 加密。', accept: ['pdf'] },
   { id: 'decrypt', title: 'PDF 解密', label: '开', color: '#058aff', hint: '输入有效密码解除保护；不破解未知密码。', accept: ['pdf'] },
+  { id: 'rotate', title: 'PDF 旋转', label: '转', color: '#00a6a6', hint: '顺时针旋转全部页面或指定页面，保留文字与图片。', accept: ['pdf'] },
+  { id: 'extract', title: '提取 PDF 页面', label: '取', color: '#087bff', hint: '将指定页码按填写顺序提取为一个 PDF。', accept: ['pdf'] },
+  { id: 'remove-pages', title: '删除 PDF 页面', label: '删', color: '#ff4b55', hint: '删除不需要的页面，至少保留一页。', accept: ['pdf'] },
+  { id: 'reorder', title: '调整 PDF 页序', label: '序', color: '#913bff', hint: '填写全部页码的新顺序，例如 3,1,2；每页仅出现一次。', accept: ['pdf'] },
+  { id: 'page-numbers', title: 'PDF 添加页码', label: '码', color: '#ff941a', hint: '在顶部或底部居中添加数字页码；暂不支持含旋转页面的文件。', accept: ['pdf'] },
 ]
 export const favoriteKey = 'pdf-favorite-tools-v1'
 export function favorites() { return uni.getStorageSync(favoriteKey) || [] }

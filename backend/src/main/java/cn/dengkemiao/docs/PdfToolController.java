@@ -24,7 +24,7 @@ import jakarta.annotation.PreDestroy;
 public class PdfToolController {
     private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx;
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4));
-    private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt");
+    private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers");
     @Value("${PDF_TEMP_DIR:./data/pdf-temp}") private String directory;
     @Value("${PDF_BILLING_ENABLED:false}") private boolean billingEnabled;
     public PdfToolController(JdbcTemplate db,PdfTools tools,PlatformTransactionManager manager){this.db=db;this.tools=tools;this.tx=new TransactionTemplate(manager);}
