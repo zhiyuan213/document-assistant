@@ -3,7 +3,10 @@
     <view class="tool-actions"><button open-type="share">分享 ↗</button><button @click="favorite">{{ liked ? '★ 已收藏' : '☆ 收藏工具' }}</button></view>
     <template v-if="!busy && !result">
       <view class="intro"><PdfIcon :label="tool.label" :color="tool.color"/><view class="intro-title">{{ tool.title }}</view><text>{{ tool.hint }}</text></view>
-      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? '继续添加文件' : '点击选择文件' }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
+      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? '继续添加文件' : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
+      <!-- #ifdef MP-WEIXIN -->
+      <view v-if="tool.id !== 'images'" class="pdf-tip">文件从微信聊天中选择。手机里的 PDF / Word 请先发送给“文件传输助手”，再从该聊天选择文件。选择文件不会向聊天发送消息。</view>
+      <!-- #endif -->
       <view v-for="(file,i) in selected" :key="file.path" class="input-file"><image v-if="tool.id==='images'" :src="file.path" mode="aspectFill"/><PdfIcon v-else :label="tool.id==='word-pdf'?'W':'PDF'" :color="tool.color"/><view class="file-info"><text>{{ file.name }}</text><text class="muted">{{ size(file.size) }}</text></view><text v-if="i" @click="move(i)">↑</text><text @click="selected.splice(i,1)">×</text></view>
       <view v-if="tool.id==='split'" class="options"><view class="option-title">拆分方式</view><radio-group @change="splitMode=$event.detail.value"><label><radio value="pages" :checked="splitMode==='pages'" color="#087bff"/>逐页拆分</label><label><radio value="ranges" :checked="splitMode==='ranges'" color="#087bff"/>自定义范围</label></radio-group><input v-if="splitMode==='ranges'" v-model="ranges" placeholder="例如 1-3,5,8-10"/></view>
       <view v-if="tool.id==='images'" class="options"><view class="option-title">页面方向 · 按当前图片顺序生成</view><view class="choices"><text :class="{active:orientation==='portrait'}" @click="orientation='portrait'">A4 竖版</text><text :class="{active:orientation==='landscape'}" @click="orientation='landscape'">A4 横版</text></view></view>
@@ -31,6 +34,14 @@ import {pdfRequest,submitPdf,savePdf} from '../../lib/pdf-api'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),quota=ref(null),stagePercent=ref(0),stage=ref('正在上传文件…')
 const splitMode=ref('pages'),ranges=ref(''),orientation=ref('portrait'),format=ref('jpg'),watermark=ref(''),password=ref(''),confirmation=ref('')
 const compression=ref('standard'),imageOutput=ref('merged'),watermarkMode=ref('text'),watermarkFile=ref(null),compressionLevels=[{id:'light',title:'轻量 · 高清'},{id:'standard',title:'标准'},{id:'strong',title:'强力 · 小文件'}]
+const pickerLabel=computed(()=>{
+ // #ifdef MP-WEIXIN
+ return tool.value.id==='images'?'从相册选择图片':'从微信聊天选择文件'
+ // #endif
+ // #ifdef H5
+ return '点击选择文件'
+ // #endif
+})
 let alive=true
 onLoad(async options=>{tool.value=pdfTools.find(t=>t.id===options.tool)||pdfTools[0];uni.setNavigationBarTitle({title:tool.value.title});liked.value=favorites().includes(tool.value.id);await refreshQuota()})
 onUnload(()=>{alive=false;password.value='';confirmation.value=''})
@@ -47,7 +58,7 @@ function choose(){
  uni.chooseFile({count:Math.max(1,max-selected.value.length),type:'file',extension:tool.value.accept.map(e=>'.'+e),success})
  // #endif
  // #ifdef MP-WEIXIN
- wx.chooseMessageFile({count:Math.max(1,max-selected.value.length),type:'file',extension:tool.value.accept,success})
+ wx.chooseMessageFile({count:Math.max(1,max-selected.value.length),type:'file',extension:tool.value.accept,success,fail:r=>{if(!String(r.errMsg||'').includes('cancel'))error.value='文件选择失败，请确认文件已下载到微信聊天中，再重试'}})
  // #endif
 }
 function move(i){selected.value.splice(i-1,0,selected.value.splice(i,1)[0])}

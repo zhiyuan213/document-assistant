@@ -1,11 +1,18 @@
 import { baseURL } from './api'
 let creating
 const tokenKey = 'pdf-visitor-token-v1'
+function networkError(result) {
+  const message = String(result?.errMsg || '').toLowerCase()
+  if (message.includes('domain') || message.includes('url not in')) return new Error('接口域名未获微信允许，请配置 request 合法域名后重新预览')
+  if (message.includes('ssl') || message.includes('certificate') || message.includes('tls')) return new Error('HTTPS连接校验失败，请检查服务域名和证书')
+  if (message.includes('timeout') || message.includes('timed out')) return new Error('连接处理服务超时，请检查手机网络后重试')
+  return new Error('手机未能连接处理服务，请检查网络及小程序合法域名后重试')
+}
 function raw(path, method = 'GET', data, header = {}) {
   return new Promise((resolve, reject) => uni.request({ url: baseURL + '/api/pdf' + path, method, data, timeout: 120000,
     header: { Authorization: 'Bearer ' + (uni.getStorageSync(tokenKey) || ''), ...header },
     success: r => { if (r.statusCode >= 200 && r.statusCode < 300) resolve(r.data); else { const e = new Error(r.data?.message || '请求失败，请重试'); e.status = r.statusCode; reject(e) } },
-    fail: () => reject(new Error('无法连接处理服务，请稍后重试')),
+    fail: result => reject(networkError(result)),
   }))
 }
 export async function visitor() {
