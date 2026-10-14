@@ -83,7 +83,7 @@ public class PdfTools {
         if(ranges.isBlank()) { for(int i=1;i<=n;i++)groups.add(new int[]{i,i}); }
         else {
             if(ranges.length()>500)throw new ApiError(400,"页码范围过长");
-            try {for(String range:ranges.split(",")){String[] parts=range.trim().split("-",-1);if(parts.length>2)throw new NumberFormatException();int a=Integer.parseInt(parts[0]),b=parts.length==2?Integer.parseInt(parts[1]):a;if(a<1||b<a||b>n)throw new NumberFormatException();groups.add(new int[]{a,b});}}
+            try {for(String range:ranges.split(",",-1)){String[] parts=range.trim().split("-",-1);if(parts.length>2)throw new NumberFormatException();int a=Integer.parseInt(parts[0]),b=parts.length==2?Integer.parseInt(parts[1]):a;if(a<1||b<a||b>n)throw new NumberFormatException();groups.add(new int[]{a,b});}}
             catch(NumberFormatException e){throw new ApiError(400,"页码格式示例：1-3,5,8-10，不能超出总页数");}
         }
         if(groups.size()>200)throw new ApiError(400,"最多拆分200个文件");

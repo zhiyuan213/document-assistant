@@ -9,6 +9,20 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PdfToolsTest {
+    @Test void splittingPreservesInheritedFontsAndRejectsTrailingSeparator() throws Exception {
+        byte[] input;
+        try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var out=new ByteArrayOutputStream()) {
+            var page=new org.apache.pdfbox.pdmodel.PDPage();doc.addPage(page);
+            try(var stream=new org.apache.pdfbox.pdmodel.PDPageContentStream(doc,page)) {
+                stream.beginText();stream.setFont(new org.apache.pdfbox.pdmodel.font.PDType1Font(org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA),12);stream.newLineAtOffset(30,100);stream.showText("Inherited font text");stream.endText();
+            }
+            doc.getPages().getCOSObject().setItem(org.apache.pdfbox.cos.COSName.RESOURCES,page.getResources());
+            page.getCOSObject().removeItem(org.apache.pdfbox.cos.COSName.RESOURCES);doc.save(out);input=out.toByteArray();
+        }
+        var split=tools.run("split",List.of(input),"a.pdf",Map.of());
+        try(var zip=new ZipInputStream(new ByteArrayInputStream(split.bytes()))){assertNotNull(zip.getNextEntry());try(var doc=Loader.loadPDF(zip.readAllBytes())){assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(doc).contains("Inherited font text"));}}
+        assertThrows(ApiError.class,()->tools.run("split",List.of(input),"a.pdf",Map.of("ranges","1,")));
+    }
     @Test void separatesImagesAndAcceptsImageWatermark() throws Exception {
         var output=tools.run("images",List.of(PdfServiceTest.image(),PdfServiceTest.image()),"image.png",Map.of("imageOutput","separate"));
         try(var zip=new ZipInputStream(new ByteArrayInputStream(output.bytes()))){int count=0;while(zip.getNextEntry()!=null){try(var doc=Loader.loadPDF(zip.readAllBytes())){assertEquals(1,doc.getNumberOfPages());}count++;}assertEquals(2,count);}

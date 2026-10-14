@@ -3,7 +3,7 @@
     <view class="tool-actions"><button open-type="share">分享 ↗</button><button @click="favorite">{{ liked ? '★ 已收藏' : '☆ 收藏工具' }}</button></view>
     <template v-if="!busy && !result">
       <view class="intro"><PdfIcon :label="tool.label" :color="tool.color"/><view class="intro-title">{{ tool.title }}</view><text>{{ tool.hint }}</text></view>
-      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? '继续添加文件' : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
+      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? (['merge','images'].includes(tool.id) ? '继续添加文件' : '更换文件') : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
       <!-- #ifdef MP-WEIXIN -->
       <view v-if="tool.id !== 'images'" class="pdf-tip">文件从微信聊天中选择。手机里的 PDF / Word 请先发送给“文件传输助手”，再从该聊天选择文件。选择文件不会向聊天发送消息。</view>
       <!-- #endif -->
