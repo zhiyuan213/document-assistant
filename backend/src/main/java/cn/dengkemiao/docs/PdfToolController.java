@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Timestamp;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -13,6 +14,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -22,12 +25,13 @@ import jakarta.annotation.PreDestroy;
 @RestController
 @RequestMapping("/api/pdf")
 public class PdfToolController {
-    private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx;
+    private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx; private final WechatPayService wechatPay; private final ObjectMapper json; private final PdfAiCredits aiCredits;
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4));
     private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers","excel-pdf","ppt-pdf","crop","sign","extract-images","ocr","repair","markdown","compare","redact");
     @Value("${PDF_TEMP_DIR:./data/pdf-temp}") private String directory;
     @Value("${PDF_BILLING_ENABLED:false}") private boolean billingEnabled;
-    public PdfToolController(JdbcTemplate db,PdfTools tools,PlatformTransactionManager manager){this.db=db;this.tools=tools;this.tx=new TransactionTemplate(manager);}
+    @Value("${PDF_MONTHLY_PRICE_FEN:990}") private int monthlyPriceFen;
+    public PdfToolController(JdbcTemplate db,PdfTools tools,PlatformTransactionManager manager,WechatPayService wechatPay,ObjectMapper json,PdfAiCredits aiCredits){this.db=db;this.tools=tools;this.tx=new TransactionTemplate(manager);this.wechatPay=wechatPay;this.json=json;this.aiCredits=aiCredits;}
     private LocalDate today(){return LocalDate.now(ZoneId.of("Asia/Shanghai"));}
     static LocalDateTime monthEnd(LocalDateTime purchasedAt){return purchasedAt.plusMonths(1);}
     private Map<String,Object> membership(String id){
@@ -43,20 +47,11 @@ public class PdfToolController {
     }
     private static String hash(String value){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     @PostMapping("/visitor") public Map<String,Object> create(){String id=UUID.randomUUID().toString(),token=UUID.randomUUID().toString()+UUID.randomUUID();db.update("INSERT INTO pdf_visitor(id,token_hash) VALUES (?,?)",id,hash(token));return Map.of("token",token);}
-    @GetMapping("/config") public Map<String,Object> config(){return Map.of("billingEnabled",billingEnabled,"dailyFree",3,"retentionMinutes",30,"paymentEnabled",false,"adEnabled",false,"packages",List.of(Map.of("id","monthly","priceFen",990,"months",1,"dailyFileLimit",-1)));}
+    @GetMapping("/config") public Map<String,Object> config(){return Map.of("billingEnabled",billingEnabled,"dailyFree",-1,"retentionMinutes",30,"paymentEnabled",billingEnabled&&wechatPay.enabled(),"adEnabled",false,"packages",List.of(Map.of("id","monthly","priceFen",Math.max(990,monthlyPriceFen),"months",1,"aiDailyLimit",50,"aiMonthlyTokenCredits",aiCredits.monthlyCap()),Map.of("id","ai-topup","priceFen",990,"tokenCredits",PdfAiCredits.TOPUP_CREDITS)));}
     @GetMapping("/quota") public Map<String,Object> quota(@RequestHeader(value="Authorization",required=false)String header){
-        String id=visitor(header);var member=membership(id);boolean active=Boolean.TRUE.equals(member.get("active"));
-        var rows=db.queryForList("SELECT used_count,used_files FROM pdf_daily_quota WHERE visitor_id=? AND quota_date=?",id,today());
-        int used=rows.isEmpty()?0:((Number)rows.get(0).get(active?"used_files":"used_count")).intValue();
-        return Map.of("billingEnabled",billingEnabled,"unlimited",!billingEnabled||active,"remaining",billingEnabled&&!active?Math.max(0,3-used):-1,"dailyLimit",active?-1:3,"unit",active?"files":"jobs","membership",member,"resetTimezone","Asia/Shanghai");
+        String id=aiCredits.owner(visitor(header));var member=membership(id);
+        return Map.of("billingEnabled",billingEnabled,"paymentEnabled",billingEnabled&&wechatPay.enabled(),"unlimited",true,"remaining",-1,"dailyLimit",-1,"monthlyPriceFen",Math.max(990,monthlyPriceFen),"unit","files","membership",member,"resetTimezone","Asia/Shanghai");
     }
-    private void reserve(String id,LocalDate day,int files){tx.executeWithoutResult(status->{
-        boolean active=Boolean.TRUE.equals(membership(id).get("active"));
-        db.update("INSERT INTO pdf_daily_quota(visitor_id,quota_date,used_count,used_files) VALUES (?,?,0,0) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)",id,day);
-        String condition=active?"1=1":"used_count<3";
-        int changed=active?db.update("UPDATE pdf_daily_quota SET used_count=used_count+1,used_files=used_files+? WHERE visitor_id=? AND quota_date=? AND "+condition,files,id,day):db.update("UPDATE pdf_daily_quota SET used_count=used_count+1,used_files=used_files+? WHERE visitor_id=? AND quota_date=? AND "+condition,files,id,day);
-        if(changed!=1)throw new ApiError(402,"今日3次免费额度已用完，请明日再试；月卡支付暂未开通");
-    });}
     private void refund(String id,LocalDate day,int files){if(day.equals(LocalDate.ofEpochDay(0)))return;db.update("UPDATE pdf_daily_quota SET used_count=GREATEST(0,used_count-1),used_files=GREATEST(0,used_files-?) WHERE visitor_id=? AND quota_date=?",files,id,day);}
     @PostMapping(value="/jobs",consumes="multipart/form-data") public Map<String,Object> submit(@RequestHeader(value="Authorization",required=false)String header,@RequestParam String tool,@RequestParam("files")List<MultipartFile> files,@RequestParam Map<String,String> params) throws IOException {
         String owner=visitor(header);if(!TOOLS.contains(tool))throw new ApiError(400,"未知PDF工具");
@@ -66,7 +61,8 @@ public class PdfToolController {
         if(workers.getQueue().remainingCapacity()==0)throw new ApiError(429,"当前处理繁忙，请稍后重试");
         // Epoch date means no quota was reserved, including when cleaning jobs after a config change.
         int units=files.size()-(tool.equals("sign")||tool.equals("watermark")&&"image".equals(params.get("watermarkMode"))?1:0);
-        LocalDate day=billingEnabled?today():LocalDate.ofEpochDay(0);if(billingEnabled)reserve(owner,day,units);String id=UUID.randomUUID().toString();
+        // The basic PDF tools are acquisition features and remain unlimited/free, regardless of AI VIP billing.
+        LocalDate day=LocalDate.ofEpochDay(0);String id=UUID.randomUUID().toString();
         try {
             db.update("INSERT INTO pdf_tool_job(id,visitor_id,tool,status,progress,quota_date,quota_units,expires_at) VALUES (?,?,?,'queued',10,?,?,TIMESTAMPADD(MINUTE,30,CURRENT_TIMESTAMP))",id,owner,tool,day,units);
             String name=Optional.ofNullable(files.get(0).getOriginalFilename()).orElse("input");var options=new HashMap<>(params);options.remove("tool");
@@ -91,7 +87,66 @@ public class PdfToolController {
         var job=owned(id,visitor(header));if(!"completed".equals(job.get("status")))throw new ApiError(409,"文件尚未完成");Path file=resultPath(id);if(!Files.isRegularFile(file))throw new ApiError(410,"临时文件已清理，请重新处理");String ext=job.get("extension").toString();return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header("Content-Disposition","attachment; filename=\"dengke-result."+ext+"\"").body(Files.readAllBytes(file));
     }
     @DeleteMapping("/jobs/{id}") public Map<String,Object> remove(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header)throws IOException {var job=owned(id,visitor(header));if(Set.of("queued","processing").contains(job.get("status")))throw new ApiError(409,"文件正在处理");Files.deleteIfExists(resultPath(id));db.update("DELETE FROM pdf_tool_job WHERE id=?",id);return Map.of("ok",true);}
-    @PostMapping("/purchase") public void purchase(){throw new ApiError(503,"微信支付尚未开通，暂不收款");}
+    @PostMapping("/login") public Map<String,Object> bindWechat(@RequestHeader(value="Authorization",required=false)String header,@RequestBody Map<String,String> body){
+        String id=visitor(header);String code=body.get("code");if(code==null||code.isBlank())throw new ApiError(400,"微信登录凭证缺失");
+        String openid=wechatPay.openId(code);db.update("UPDATE pdf_visitor SET wechat_openid=? WHERE id=?",openid,id);
+        var rows=db.queryForList("SELECT MAX(m.expires_at) AS expires_at FROM pdf_membership m JOIN pdf_visitor v ON v.id=m.visitor_id WHERE v.wechat_openid=?",openid);
+        Object expiry=rows.get(0).get("expires_at");
+        if(expiry!=null)db.update("INSERT INTO pdf_membership(visitor_id,expires_at) VALUES (?,?) ON DUPLICATE KEY UPDATE expires_at=GREATEST(expires_at,VALUES(expires_at))",aiCredits.owner(id),expiry);
+        return Map.of("ok",true);
+    }
+    @PostMapping("/purchase") public Map<String,Object> purchase(@RequestHeader(value="Authorization",required=false)String header,@RequestBody(required=false) Map<String,String> body){
+        if(!billingEnabled)throw new ApiError(409,"当前为免费开放模式，无需购买");
+        if(!wechatPay.enabled())throw new ApiError(503,"微信支付配置未完成，暂不收款");
+        String owner=aiCredits.owner(visitor(header));var openids=db.queryForList("SELECT wechat_openid FROM pdf_visitor WHERE id=?",String.class,owner);
+        if(openids.isEmpty()||openids.get(0)==null||openids.get(0).isBlank())throw new ApiError(401,"请先完成微信身份校验");
+        String packageId=body==null?"monthly":body.getOrDefault("packageId","monthly");
+        if(!Set.of("monthly","ai-topup").contains(packageId))throw new ApiError(400,"请选择有效套餐");
+        boolean topup=packageId.equals("ai-topup");int amount=topup?PdfAiCredits.TOPUP_PRICE_FEN:Math.max(990,monthlyPriceFen);
+        String orderId=UUID.randomUUID().toString(),tradeNo="DK"+UUID.randomUUID().toString().replace("-","").substring(0,30);
+        db.update("INSERT INTO pdf_purchase(id,visitor_id,package_id,amount_fen,credits,status,out_trade_no) VALUES (?,?,?,?,?,'pending',?)",orderId,owner,packageId,amount,topup?PdfAiCredits.TOPUP_CREDITS:1,tradeNo);
+        var pay=wechatPay.createMiniProgramOrder(tradeNo,openids.get(0),amount,topup?"登科喵 AI 加油包（200万额度）":"登科喵 AI 月卡");var result=new HashMap<String,Object>(pay);result.put("orderId",orderId);return result;
+    }
+    @GetMapping("/purchase/{id}") public Map<String,Object> purchaseState(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header){
+        String owner=aiCredits.owner(visitor(header));var rows=db.queryForList("SELECT status,paid_at FROM pdf_purchase WHERE id=? AND visitor_id=?",id,owner);
+        if(rows.isEmpty())throw new ApiError(404,"订单不存在");var row=rows.get(0);return Map.of("paid","paid".equals(row.get("status")),"status",row.get("status"));
+    }
+    @PostMapping("/pay/notify") public ResponseEntity<Map<String,String>> paymentNotify(
+            @RequestHeader(value="Wechatpay-Timestamp",required=false)String timestamp,
+            @RequestHeader(value="Wechatpay-Nonce",required=false)String nonce,
+            @RequestHeader(value="Wechatpay-Serial",required=false)String serial,
+            @RequestHeader(value="Wechatpay-Signature",required=false)String signature,
+            @RequestBody String body){
+        try {
+            JsonNode notice=wechatPay.verifyAndDecrypt(timestamp,nonce,serial,signature,body);
+            if(!"SUCCESS".equals(notice.path("trade_state").asText())||!"JSAPI".equals(notice.path("trade_type").asText()))throw new SecurityException("payment not successful");
+            if(!wechatPay.matchesMerchant(notice.path("appid").asText(),notice.path("mchid").asText()))throw new SecurityException("merchant mismatch");
+            String tradeNo=notice.path("out_trade_no").asText(),transactionId=notice.path("transaction_id").asText();int total=notice.path("amount").path("total").asInt(-1);
+            tx.executeWithoutResult(status->{var orders=db.queryForList("SELECT id,visitor_id,package_id,credits,amount_fen,status,transaction_id FROM pdf_purchase WHERE out_trade_no=? FOR UPDATE",tradeNo);
+                if(orders.isEmpty())throw new SecurityException("unknown order");var order=orders.get(0);
+                if(((Number)order.get("amount_fen")).intValue()!=total)throw new SecurityException("amount mismatch");
+                if("paid".equals(order.get("status"))){if(!transactionId.equals(order.get("transaction_id")))throw new SecurityException("transaction mismatch");return;}
+                if(!"pending".equals(order.get("status")))throw new SecurityException("order is not payable");
+                LocalDateTime now=LocalDateTime.now(ZoneId.of("Asia/Shanghai"));String visitorId=aiCredits.owner(order.get("visitor_id").toString());
+                db.queryForList("SELECT id FROM pdf_visitor WHERE id=? FOR UPDATE",visitorId);
+                if("ai-topup".equals(order.get("package_id"))) {
+                    if(((Number)order.get("credits")).longValue()!=PdfAiCredits.TOPUP_CREDITS || total!=PdfAiCredits.TOPUP_PRICE_FEN)throw new SecurityException("invalid topup");
+                    aiCredits.grantTopup(visitorId,PdfAiCredits.TOPUP_CREDITS);
+                } else if("monthly".equals(order.get("package_id"))) {
+                    var members=db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",visitorId);
+                    LocalDateTime previous=members.isEmpty()?now:((Timestamp)members.get(0).get("expires_at")).toLocalDateTime();
+                    boolean renewing=previous.isAfter(now);
+                    // Initialize the current period before extending an active membership.
+                    if(renewing)aiCredits.snapshot(visitorId);
+                    LocalDateTime expires=(renewing?previous:now).plusMonths(1);
+                    db.update("INSERT INTO pdf_membership(visitor_id,expires_at) VALUES (?,?) ON DUPLICATE KEY UPDATE expires_at=VALUES(expires_at)",visitorId,Timestamp.valueOf(expires));
+                    aiCredits.activateMonth(visitorId,expires,renewing);
+                } else throw new SecurityException("unknown package");
+                db.update("UPDATE pdf_purchase SET status='paid',transaction_id=?,paid_at=? WHERE id=?",transactionId,Timestamp.valueOf(now),order.get("id"));
+            });
+            return ResponseEntity.ok(Map.of("code","SUCCESS","message","成功"));
+        } catch(Exception e){org.slf4j.LoggerFactory.getLogger(getClass()).warn("WeChat Pay notification rejected ({})",e.getClass().getSimpleName());return ResponseEntity.badRequest().body(Map.of("code","FAIL","message","通知校验失败"));}
+    }
     @PostMapping("/ad-reward") public void reward(){throw new ApiError(503,"激励视频广告尚未开通，暂不发放次数");}
     @Scheduled(fixedDelay=60000) public void cleanup(){
         try {

@@ -20,6 +20,17 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/dengke?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       DB_PASSWORD: ${DB_PASSWORD:-local-development-only}
       PDF_BILLING_ENABLED: ${PDF_BILLING_ENABLED:-false}
+      PDF_MONTHLY_PRICE_FEN: ${PDF_MONTHLY_PRICE_FEN:-990}
+      DEEPSEEK_API_URL: ${DEEPSEEK_API_URL:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      PDF_AI_TEST_MODE: ${PDF_AI_TEST_MODE:-false}
+      PDF_AI_MONTHLY_TOKEN_CREDITS: ${PDF_AI_MONTHLY_TOKEN_CREDITS:-2000000}
+      PDF_AI_DAILY_REQUEST_LIMIT: ${PDF_AI_DAILY_REQUEST_LIMIT:-50}
+      PDF_AI_MAX_PAGES: ${PDF_AI_MAX_PAGES:-30}
+      PDF_AI_MAX_SCAN_PAGES: ${PDF_AI_MAX_SCAN_PAGES:-5}
+      PDF_AI_MAX_INPUT_CHARS: ${PDF_AI_MAX_INPUT_CHARS:-15000}
+      PDF_AI_MAX_OUTPUT_TOKENS: ${PDF_AI_MAX_OUTPUT_TOKENS:-1500}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://127.0.0.1:5173}
     volumes: ['files:/app/data/pdf-temp']
     depends_on:

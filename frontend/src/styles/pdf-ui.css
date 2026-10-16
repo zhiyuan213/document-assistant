@@ -1,0 +1,21 @@
+/* PDF pages only: keep the separate resume assistant's appearance unchanged. */
+.pdf-screen{--pdf-blue:#246bfd;--pdf-ink:#172b4d;--pdf-muted:#73839b;--pdf-line:#e5edf7;box-sizing:border-box;max-width:960rpx;margin:0 auto;min-height:calc(100vh - var(--window-top,0px) - var(--window-bottom,0px));padding:32rpx 28rpx 48rpx;background:#f5f6f9;color:#172b4d;font-size:28rpx;line-height:1.6}
+.pdf-screen .ui-heading{font-size:38rpx;line-height:1.35;font-weight:700;letter-spacing:-.5rpx}
+.pdf-screen .ui-subtitle{font-size:26rpx;color:#73839b;margin-top:10rpx;line-height:1.65}
+.pdf-screen .ui-section-title{font-size:30rpx;line-height:1.5;font-weight:600;margin:32rpx 0 18rpx}
+.pdf-screen .ui-caption{font-size:24rpx;line-height:1.7;color:#73839b}
+.pdf-screen .ui-card{background:#fff;border:1rpx solid #e5edf7;border-radius:20rpx;padding:24rpx}
+.pdf-screen .ui-tool-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16rpx}
+.pdf-screen .ui-section-row{display:flex;justify-content:space-between;align-items:center;gap:16rpx;margin:24rpx 0 16rpx}
+.pdf-screen .ui-section-row .ui-section-title{margin:0}
+.pdf-screen .ui-header{display:flex;align-items:center;justify-content:space-between;gap:20rpx;margin-bottom:28rpx}
+.pdf-screen .ui-link{color:#246bfd;font-size:26rpx;min-height:64rpx;display:inline-flex;align-items:center;justify-content:center;padding:8rpx 4rpx;flex-shrink:0}
+.pdf-screen .ui-button{display:flex;align-items:center;justify-content:center;width:100%;min-height:88rpx;padding:18rpx 24rpx;margin:20rpx 0 0;border:1rpx solid transparent;border-radius:16rpx;background:#246bfd;color:#fff;font-size:28rpx;font-weight:600;line-height:1.7;box-sizing:border-box}
+.pdf-screen .ui-button::after{border:0}
+.pdf-screen .ui-button[disabled]{background:#dfe9f8;color:#7a91af;border-color:transparent}
+.pdf-screen .ui-button-secondary{background:#fff;border-color:#dce7f7;color:#246bfd}
+.pdf-screen .ui-button-quiet{background:transparent;color:#73839b}
+.pdf-screen .ui-notice{padding:20rpx 24rpx;background:#eaf2ff;color:#37649a;border-radius:16rpx;font-size:24rpx;line-height:1.7;margin:20rpx 0}
+.pdf-screen .ui-input{box-sizing:border-box;width:100%;min-height:88rpx;padding:20rpx 24rpx;border:1rpx solid #dfe8f4;border-radius:16rpx;background:#fff;color:#172b4d;font-size:28rpx;line-height:1.6}
+.pdf-screen .ui-input:focus{border-color:#246bfd}
+.pdf-screen .muted{font-size:24rpx;color:#73839b;line-height:1.7}

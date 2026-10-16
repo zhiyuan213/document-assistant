@@ -2,6 +2,7 @@
 export default {}
 </script>
 <style>
+@import "./styles/pdf-ui.css";
 /* #ifdef H5 */
 ::-webkit-scrollbar {
   width: 0;

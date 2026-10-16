@@ -6,7 +6,7 @@
 
 PDF 转 Word（文字提取版）、Word 转 PDF（LibreOffice）、合并、拆分、三级压缩、图片转 PDF、PDF 转图片、文字/图片水印、AES-256 加密和输入已知密码解密。首页九宫格和全部工具列表，支持分享工具页面、设备本地收藏。
 
-收费开关 `PDF_BILLING_ENABLED` 默认 `false`，不限次数免费使用；设为 `true` 后非会员每日免费处理 3 次，月卡 9.90 元一个月、有效期内不限量处理，失败返还额度。首页显示会员有效期，支付与广告仍未开通。旧库升级前先执行 `database/migrations/007_monthly_membership.sql`，详见 `docs/MONTHLY_MEMBERSHIP.md`。
+基础 PDF 工具永久免费、不限次数。AI 总结、问答、信息提取、对比、翻译、学习助手和视觉识别使用月卡或加油包额度，月卡 9.90 元/周期含 200 万加权 Token，加油包 9.90 元/200 万额度，长期有效；每日最多 50 次，先扣月额度再扣加油包，按估算预占并根据实际 Token 用量结算。配置 `PDF_BILLING_ENABLED=true` 与微信支付 API v3 环境变量后开放购买，不影响基础工具免费使用。密钥变量见 `.env.example`；沙箱和现网 AppKey 属于第三方支付服务商凭据，直连微信支付不会读取。价格假设和数据库升级见 `docs/MONTHLY_MEMBERSHIP.md`。
 
 ## 本地运行
 
@@ -32,8 +32,8 @@ npm run build:mp-weixin --prefix frontend
 
 ## 云托管部署
 
-已有数据库先执行 [004_pdf_tools.sql](database/migrations/004_pdf_tools.sql)，新库可执行 [pdf-tools-init.sql](database/pdf-tools-init.sql)。新版后端部署后，先备份数据库，再执行 [旧表清理脚本](database/migrations/005_remove_legacy_tables.sql)。它会删除14张旧资料平台表及数据，保留5张新版PDF工具表；初始化脚本不再创建旧表。生产环境变量参考 [JSON 模板](deploy/pdf-tools.env.json.example)，导入后设 `SQL_INIT_MODE=never`。容器端口 8080，健康检查 `/api/health`。
+已有数据库先执行 [004_pdf_tools.sql](database/migrations/004_pdf_tools.sql)，新库可执行 [pdf-tools-init.sql](database/pdf-tools-init.sql)。旧数据库部署会员功能前按 [会员说明](docs/MONTHLY_MEMBERSHIP.md) 运行后续迁移。新版后端部署后，先备份数据库，再执行 [旧表清理脚本](database/migrations/005_remove_legacy_tables.sql)。它会删除14张旧资料平台表及数据，保留新版 PDF 工具表；初始化脚本不再创建旧表。生产环境变量参考 [JSON 模板](deploy/pdf-tools.env.json.example)，导入后设 `SQL_INIT_MODE=never`。容器端口 8080，健康检查 `/api/health`。
 
-当前结果保存在实例临时目录，需保持一个活动实例；多实例共享存储和可靠队列尚未接入。服务更新时请先下载已有结果。新版不要求微信 AppSecret 或 COS_BUCKET。
+当前结果保存在实例临时目录，需保持一个活动实例；多实例共享存储和可靠队列尚未接入。服务更新时请先下载已有结果。PDF 处理本身不要求微信 AppSecret 或 COS_BUCKET；启用支付时需提供 `.env.example` 列出的微信登录和商户配置。
 
 功能边界、价格、数据库、隐私和全部接口见 [PDF_TOOLS.md](docs/PDF_TOOLS.md)。真实支付、广告、分享和手机保存需相应账号配置及真机验收。

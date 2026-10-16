@@ -54,6 +54,20 @@ export async function submitPdf(tool, files, options) {
   for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length }
   return raw('/jobs', 'POST', body.buffer, { 'Content-Type': 'multipart/form-data; boundary=' + boundary })
 }
+async function postPdfAi(path, mode, files, prompt, page) {
+  await visitor()
+  const boundary = 'DengkePdfAi' + Date.now(), chunks = [], utf8 = s => Uint8Array.from(unescape(encodeURIComponent(s)), c => c.charCodeAt(0))
+  for (const [index, file] of files.entries()) {
+    chunks.push(utf8(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="ai-input-${index}.pdf"\r\nContent-Type: application/pdf\r\n\r\n`), await bytes(file.path), utf8('\r\n'))
+  }
+  for (const [key, value] of Object.entries({ mode, prompt, page })) chunks.push(utf8(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`))
+  chunks.push(utf8(`--${boundary}--\r\n`))
+  const body = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0)); let offset = 0
+  for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length }
+  return raw(path, 'POST', body.buffer, { 'Content-Type': 'multipart/form-data; boundary=' + boundary })
+}
+export function estimatePdfAi(mode, files, prompt = '', page = 1) { return postPdfAi('/ai/estimate', mode, files, prompt, page) }
+export function submitPdfAi(mode, files, prompt = '', page = 1) { return postPdfAi('/ai', mode, files, prompt, page) }
 export async function savePdf(job) {
   const url = baseURL + '/api/pdf/jobs/' + job.id + '/file', header = { Authorization: 'Bearer ' + uni.getStorageSync(tokenKey) }, name = '登科喵结果.' + job.extension
   // #ifdef H5

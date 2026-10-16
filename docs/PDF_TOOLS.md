@@ -21,17 +21,15 @@
 
 ## 次数和商业化
 
-环境变量 `PDF_BILLING_ENABLED` 默认 `false`，关闭时不限处理次数、不预占每日额度，前端隐藏充值入口并显示“免费使用 · 不限次数”。设为 `true` 并重新部署后恢复每日免费三次限制。已有额度记录保留，关闭期间的任务成功或失败都不会改变它们。该开关不自动开通微信支付或广告，无需修改数据库结构。
+基础 PDF 工具永久免费、不限次数。`PDF_BILLING_ENABLED` 默认 `false`；设为 `true` 仅开放 AI 月卡和加油包购买，不限制基础 PDF 工具。有效月卡或加油包余额可调用 DeepSeek AI 接口。每个账号每日最多请求 50 次；AI 月卡每个周期含 2,000,000 Token 等价值额度，9.90 元加油包另增 2,000,000 额度，长期有效且会员到期后可用，优先扣月额度；单次文字 PDF 最多 30 页/15,000 个字符，扫描件 OCR 最多 5 页，输出最多 1,500 tokens。提交前显示用量预估，模型返回实际 token 用量后结算。详见 [月卡和成本规则](MONTHLY_MEMBERSHIP.md)。
 
-收费开关开启时，上海时间每日免费处理三次，按匿名设备凭证计算。数据库事务在任务提交时预占次数，失败返还，成功下载或主动删除不返还。匿名凭证只存 SHA-256 摘要；没有微信注册或登录流程。
+AI 预估步骤会将 PDF 上传到本服务端做文字提取，预估内容不发给 DeepSeek；用户确认分析后才将 PDF 文本或选定页面图像传给 DeepSeek。
 
-这不是严格的每人每天三次：清除设备数据或重新申请凭证可能获得新身份。正式商业化需要补充速率限制和设备风控，或者在付费环节用微信身份绑定。当前版本没有通过 IP 将不同家庭或公司用户混为一人。
-
-月卡为 **9.90 元一个月**，会员有效期内不限量处理；购买后到下个月同一天同一时间到期，无对应日期时按月末。首页显示会员与有效期，真实支付仍关闭。详细计数与迁移规则见 `MONTHLY_MEMBERSHIP.md`。
+AI 月卡建议价为 **9.90 元一个月**，会员有效期到下个月同一天同一时间，无对应日期时按月末。已发送给模型的请求会计入 token 额度；微信支付 API v3 代码已接入，需配置商户环境变量并在真机验收后才能确认真实支付上线。
 
 激励视频方向为完整看完获得一次额度。当前没有广告位，入口和服务端奖励接口都关闭，不接受客户端声明观看完成来直接发次数。后续需核查该账号流量主资格、开通广告单元并落实防重复奖励验证。分享、收藏不会兑换额度，不诱导分享。
 
-官方参考：[小程序支付接入准备](https://pay.wechatpay.cn/doc/v3/merchant/4015459512)、[腾讯广告激励视频说明](https://intl.cloud.tencent.com/zh/document/product/1219/68596?lang=zh)。没有商户绑定和真实支付回调验签前，不能将预留界面当作支付已上线。
+官方参考：[小程序支付接入准备](https://pay.wechatpay.cn/doc/v3/merchant/4015459512)、[微信支付小程序下单](https://pay.wechatpay.cn/doc/v3/merchant/4012791897)、[腾讯广告激励视频说明](https://intl.cloud.tencent.com/zh/document/product/1219/68596?lang=zh)。支付上线状态以商户配置和真机验收为准。
 
 ## 临时文件和运行方式
 
@@ -55,14 +53,17 @@ Dockerfile 已安装 LibreOffice Writer 和 WenQuanYi 中文字体，初次构�
 
 | 请求 | 用途 |
 | --- | --- |
-| `GET /api/pdf/config` | 每日免费次数、套餐、保留时间和关闭状态 |
+| `GET /api/pdf/config` | 基础工具永久免费状态、AI 月卡套餐和保留时间 |
 | `POST /api/pdf/visitor` | 创建匿名设备凭证 |
 | `GET /api/pdf/quota` | 查询今日剩余次数 |
 | `POST /api/pdf/jobs` | multipart 上传 `files`、`tool` 和各工具选项 |
 | `GET /api/pdf/jobs/{id}` | 本设备任务状态 |
 | `GET /api/pdf/jobs/{id}/file` | 本设备结果下载 |
 | `DELETE /api/pdf/jobs/{id}` | 主动删除完成或失败任务结果 |
-| `POST /api/pdf/purchase` | 当前 503，支付未开通 |
+| `POST /api/pdf/login` | 用 `wx.login` code 校验并绑定当前设备身份的微信 OpenID |
+| `POST /api/pdf/purchase` | 创建 AI 月卡订单并返回小程序调起支付参数 |
+| `GET /api/pdf/purchase/{id}` | 查询当前设备拥有的订单支付状态 |
+| `POST /api/pdf/pay/notify` | 验证微信支付通知并幂等开通月卡 |
 | `POST /api/pdf/ad-reward` | 当前 503，广告未开通 |
 
 除配置、创建凭证及关闭的商业化入口外，接口要求 `Authorization: Bearer <匿名凭证>`。任务 ID 不足以下载文件，服务端校验所有者和到期时间。生产接入地址由 `frontend/.env.production` 配置；真实微信分享、保存 ZIP、合法域名仍需微信真机验收。

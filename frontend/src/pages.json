@@ -2,7 +2,7 @@
   "globalStyle": {
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f5faff",
+    "backgroundColor": "#f6f9fe",
     "navigationBarTitleText": "登科喵PDF"
   },
   "pages": [
@@ -16,7 +16,8 @@
     {
       "path": "pages/tools/index",
       "style": {
-        "navigationBarTitleText": "PDF工具"
+        "navigationBarTitleText": "PDF工具",
+        "navigationStyle": "custom"
       }
     },
     {
@@ -28,7 +29,14 @@
     {
       "path": "pages/pdf/credits",
       "style": {
-        "navigationBarTitleText": "更多次数"
+        "navigationBarTitleText": "AI 额度"
+      }
+    },
+    {
+      "path": "pages/pdf/ai",
+      "style": {
+        "navigationBarTitleText": "AI 读 PDF",
+        "navigationStyle": "custom"
       }
     },
     {
@@ -48,14 +56,20 @@
         "selectedIconPath": "static/tab-0-active.png"
       },
       {
+        "pagePath": "pages/pdf/ai",
+        "text": "AI",
+        "iconPath": "static/tab-2.png",
+        "selectedIconPath": "static/tab-2-active.png"
+      },
+      {
         "pagePath": "pages/tools/index",
         "text": "工具",
         "iconPath": "static/tab-1.png",
         "selectedIconPath": "static/tab-1-active.png"
       }
     ],
-    "selectedColor": "#087bff",
+    "selectedColor": "#246bfd",
     "borderStyle": "white",
-    "color": "#99a4b7"
+    "color": "#8b99ae"
   }
 }
