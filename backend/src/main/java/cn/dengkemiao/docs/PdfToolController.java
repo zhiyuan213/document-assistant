@@ -25,13 +25,16 @@ import jakarta.annotation.PreDestroy;
 @RestController
 @RequestMapping("/api/pdf")
 public class PdfToolController {
-    private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx; private final WechatPayService wechatPay; private final ObjectMapper json; private final PdfAiCredits aiCredits;
+    private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx; private final WechatPayService wechatPay; private final ObjectMapper json; private final PdfAiCredits aiCredits; private final PdfVirtualPayments virtualPayments;
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4));
     private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers","excel-pdf","ppt-pdf","crop","sign","extract-images","ocr","repair","markdown","compare","redact","remove-watermark");
+    @Value("${PDF_PAYMENT_PROVIDER:virtual}") private String paymentProvider;
+    private boolean virtualProvider(){return "virtual".equals(paymentProvider);}
+    private boolean paymentReady(){return virtualProvider()?virtualPayments.enabled():"wechat".equals(paymentProvider)&&wechatPay.enabled();}
     @Value("${PDF_TEMP_DIR:./data/pdf-temp}") private String directory;
     @Value("${PDF_BILLING_ENABLED:false}") private boolean billingEnabled;
     @Value("${PDF_MONTHLY_PRICE_FEN:990}") private int monthlyPriceFen;
-    public PdfToolController(JdbcTemplate db,PdfTools tools,PlatformTransactionManager manager,WechatPayService wechatPay,ObjectMapper json,PdfAiCredits aiCredits){this.db=db;this.tools=tools;this.tx=new TransactionTemplate(manager);this.wechatPay=wechatPay;this.json=json;this.aiCredits=aiCredits;}
+    public PdfToolController(JdbcTemplate db,PdfTools tools,PlatformTransactionManager manager,WechatPayService wechatPay,ObjectMapper json,PdfAiCredits aiCredits,PdfVirtualPayments virtualPayments){this.db=db;this.tools=tools;this.tx=new TransactionTemplate(manager);this.wechatPay=wechatPay;this.json=json;this.aiCredits=aiCredits;this.virtualPayments=virtualPayments;}
     private LocalDate today(){return LocalDate.now(ZoneId.of("Asia/Shanghai"));}
     static LocalDateTime monthEnd(LocalDateTime purchasedAt){return purchasedAt.plusMonths(1);}
     private Map<String,Object> membership(String id){
@@ -47,10 +50,10 @@ public class PdfToolController {
     }
     private static String hash(String value){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     @PostMapping("/visitor") public Map<String,Object> create(){String id=UUID.randomUUID().toString(),token=UUID.randomUUID().toString()+UUID.randomUUID();db.update("INSERT INTO pdf_visitor(id,token_hash) VALUES (?,?)",id,hash(token));return Map.of("token",token);}
-    @GetMapping("/config") public Map<String,Object> config(){return Map.of("billingEnabled",billingEnabled,"dailyFree",-1,"retentionMinutes",30,"paymentEnabled",billingEnabled&&wechatPay.enabled(),"adEnabled",false,"packages",List.of(Map.of("id","monthly","priceFen",Math.max(990,monthlyPriceFen),"months",1,"aiDailyLimit",50,"aiMonthlyTokenCredits",aiCredits.monthlyCap()),Map.of("id","ai-topup","priceFen",990,"tokenCredits",PdfAiCredits.TOPUP_CREDITS)));}
+    @GetMapping("/config") public Map<String,Object> config(){return Map.of("billingEnabled",billingEnabled,"dailyFree",-1,"retentionMinutes",30,"paymentEnabled",billingEnabled&&paymentReady(),"paymentProvider",paymentProvider,"adEnabled",false,"packages",List.of(Map.of("id","monthly","priceFen",virtualProvider()?990:Math.max(990,monthlyPriceFen),"months",1,"aiDailyLimit",50,"aiMonthlyTokenCredits",aiCredits.monthlyCap()),Map.of("id","ai-topup","priceFen",990,"tokenCredits",PdfAiCredits.TOPUP_CREDITS)));}
     @GetMapping("/quota") public Map<String,Object> quota(@RequestHeader(value="Authorization",required=false)String header){
         String id=aiCredits.owner(visitor(header));var member=membership(id);
-        return Map.of("billingEnabled",billingEnabled,"paymentEnabled",billingEnabled&&wechatPay.enabled(),"unlimited",true,"remaining",-1,"dailyLimit",-1,"monthlyPriceFen",Math.max(990,monthlyPriceFen),"unit","files","membership",member,"resetTimezone","Asia/Shanghai");
+        var result=new HashMap<String,Object>(Map.of("billingEnabled",billingEnabled,"paymentEnabled",billingEnabled&&paymentReady(),"paymentProvider",paymentProvider,"unlimited",true,"remaining",-1,"dailyLimit",-1,"monthlyPriceFen",virtualProvider()?990:Math.max(990,monthlyPriceFen),"unit","files","membership",member,"resetTimezone","Asia/Shanghai"));result.put("wechatLoginEnabled",virtualProvider()?virtualPayments.loginEnabled():wechatPay.enabled());return result;
     }
     private void refund(String id,LocalDate day,int files){if(day.equals(LocalDate.ofEpochDay(0)))return;db.update("UPDATE pdf_daily_quota SET used_count=GREATEST(0,used_count-1),used_files=GREATEST(0,used_files-?) WHERE visitor_id=? AND quota_date=?",files,id,day);}
     @PostMapping(value="/jobs",consumes="multipart/form-data") public Map<String,Object> submit(@RequestHeader(value="Authorization",required=false)String header,@RequestParam String tool,@RequestParam("files")List<MultipartFile> files,@RequestParam Map<String,String> params) throws IOException {
@@ -98,6 +101,7 @@ public class PdfToolController {
     @DeleteMapping("/jobs/{id}") public Map<String,Object> remove(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header)throws IOException {var job=owned(id,visitor(header));if(Set.of("queued","processing").contains(job.get("status")))throw new ApiError(409,"文件正在处理");Files.deleteIfExists(resultPath(id));db.update("DELETE FROM pdf_tool_job WHERE id=?",id);return Map.of("ok",true);}
     @PostMapping("/login") public Map<String,Object> bindWechat(@RequestHeader(value="Authorization",required=false)String header,@RequestBody Map<String,String> body){
         String id=visitor(header);String code=body.get("code");if(code==null||code.isBlank())throw new ApiError(400,"微信登录凭证缺失");
+        if(virtualProvider()){virtualPayments.bind(id,code);return Map.of("ok",true);}
         String openid=wechatPay.openId(code);db.update("UPDATE pdf_visitor SET wechat_openid=? WHERE id=?",openid,id);
         var rows=db.queryForList("SELECT MAX(m.expires_at) AS expires_at FROM pdf_membership m JOIN pdf_visitor v ON v.id=m.visitor_id WHERE v.wechat_openid=?",openid);
         Object expiry=rows.get(0).get("expires_at");
@@ -105,7 +109,8 @@ public class PdfToolController {
         return Map.of("ok",true);
     }
     @PostMapping("/purchase") public Map<String,Object> purchase(@RequestHeader(value="Authorization",required=false)String header,@RequestBody(required=false) Map<String,String> body){
-        if(!billingEnabled)throw new ApiError(409,"当前为免费开放模式，无需购买");
+        if(!billingEnabled)throw new ApiError(409,"AI 额度购买暂未开启");
+        if(virtualProvider())return virtualPayments.purchase(visitor(header),body==null?"monthly":body.getOrDefault("packageId","monthly"),body==null?"":body.getOrDefault("code",""));
         if(!wechatPay.enabled())throw new ApiError(503,"微信支付配置未完成，暂不收款");
         String owner=aiCredits.owner(visitor(header));var openids=db.queryForList("SELECT wechat_openid FROM pdf_visitor WHERE id=?",String.class,owner);
         if(openids.isEmpty()||openids.get(0)==null||openids.get(0).isBlank())throw new ApiError(401,"请先完成微信身份校验");
@@ -114,11 +119,12 @@ public class PdfToolController {
         boolean topup=packageId.equals("ai-topup");int amount=topup?PdfAiCredits.TOPUP_PRICE_FEN:Math.max(990,monthlyPriceFen);
         String orderId=UUID.randomUUID().toString(),tradeNo="DK"+UUID.randomUUID().toString().replace("-","").substring(0,30);
         db.update("INSERT INTO pdf_purchase(id,visitor_id,package_id,amount_fen,credits,status,out_trade_no) VALUES (?,?,?,?,?,'pending',?)",orderId,owner,packageId,amount,topup?PdfAiCredits.TOPUP_CREDITS:1,tradeNo);
-        var pay=wechatPay.createMiniProgramOrder(tradeNo,openids.get(0),amount,topup?"登科喵 AI 加油包（200万额度）":"登科喵 AI 月卡");var result=new HashMap<String,Object>(pay);result.put("orderId",orderId);return result;
+        var pay=wechatPay.createMiniProgramOrder(tradeNo,openids.get(0),amount,topup?"登科喵 AI 加油包（200万额度）":"登科喵 AI 月卡");var result=new HashMap<String,Object>(pay);result.put("orderId",orderId);result.put("paymentProvider","wechat");return result;
     }
     @GetMapping("/purchase/{id}") public Map<String,Object> purchaseState(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header){
         String owner=aiCredits.owner(visitor(header));var rows=db.queryForList("SELECT status,paid_at FROM pdf_purchase WHERE id=? AND visitor_id=?",id,owner);
-        if(rows.isEmpty())throw new ApiError(404,"订单不存在");var row=rows.get(0);return Map.of("paid","paid".equals(row.get("status")),"status",row.get("status"));
+        if(rows.isEmpty())throw new ApiError(404,"订单不存在");if(virtualPayments.isVirtual(id)){virtualPayments.refresh(id);rows=db.queryForList("SELECT status,paid_at FROM pdf_purchase WHERE id=? AND visitor_id=?",id,owner);}
+        var row=rows.get(0);return Map.of("paid","paid".equals(row.get("status")),"status",row.get("status"));
     }
     @PostMapping("/pay/notify") public ResponseEntity<Map<String,String>> paymentNotify(
             @RequestHeader(value="Wechatpay-Timestamp",required=false)String timestamp,
@@ -133,6 +139,7 @@ public class PdfToolController {
             String tradeNo=notice.path("out_trade_no").asText(),transactionId=notice.path("transaction_id").asText();int total=notice.path("amount").path("total").asInt(-1);
             tx.executeWithoutResult(status->{var orders=db.queryForList("SELECT id,visitor_id,package_id,credits,amount_fen,status,transaction_id FROM pdf_purchase WHERE out_trade_no=? FOR UPDATE",tradeNo);
                 if(orders.isEmpty())throw new SecurityException("unknown order");var order=orders.get(0);
+                if(virtualPayments.isVirtual(order.get("id").toString()))throw new SecurityException("wrong payment channel");
                 if(((Number)order.get("amount_fen")).intValue()!=total)throw new SecurityException("amount mismatch");
                 if("paid".equals(order.get("status"))){if(!transactionId.equals(order.get("transaction_id")))throw new SecurityException("transaction mismatch");return;}
                 if(!"pending".equals(order.get("status")))throw new SecurityException("order is not payable");

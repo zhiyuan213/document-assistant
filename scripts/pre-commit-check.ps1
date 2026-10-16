@@ -11,7 +11,7 @@ try {
     }
     & $mavenPath -f backend/pom.xml test -q
     if ($LASTEXITCODE -ne 0) { throw 'Backend tests failed' }
-    node --test scripts/pdf-job.test.mjs scripts/pdf-files.test.mjs
+    node --test scripts/pdf-job.test.mjs scripts/pdf-files.test.mjs scripts/pdf-payment.test.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Frontend tests failed' }
     npm run build:mp-weixin --prefix frontend
     if ($LASTEXITCODE -ne 0) { throw 'Mini program build failed' }

@@ -98,7 +98,7 @@ class PdfToolApiTest {
         mvc.perform(get("/api/pdf/jobs/"+id).header("Authorization",a)).andExpect(status().isNotFound());
     }
     @Test void noClientClaimCanGrantPaymentOrAdCredits()throws Exception{
-        mvc.perform(post("/api/pdf/purchase")).andExpect(status().isServiceUnavailable());
+        mvc.perform(post("/api/pdf/purchase")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/pdf/ad-reward")).andExpect(status().isServiceUnavailable());
         mvc.perform(get("/api/pdf/config")).andExpect(jsonPath("$.dailyFree").value(-1)).andExpect(jsonPath("$.packages[0].priceFen").value(990)).andExpect(jsonPath("$.packages[0].aiMonthlyTokenCredits").value(2000000)).andExpect(jsonPath("$.packages[0].months").value(1));
     }
