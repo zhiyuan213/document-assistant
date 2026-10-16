@@ -27,7 +27,7 @@ import jakarta.annotation.PreDestroy;
 public class PdfToolController {
     private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx; private final WechatPayService wechatPay; private final ObjectMapper json; private final PdfAiCredits aiCredits;
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4));
-    private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers","excel-pdf","ppt-pdf","crop","sign","extract-images","ocr","repair","markdown","compare","redact");
+    private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers","excel-pdf","ppt-pdf","crop","sign","extract-images","ocr","repair","markdown","compare","redact","remove-watermark");
     @Value("${PDF_TEMP_DIR:./data/pdf-temp}") private String directory;
     @Value("${PDF_BILLING_ENABLED:false}") private boolean billingEnabled;
     @Value("${PDF_MONTHLY_PRICE_FEN:990}") private int monthlyPriceFen;
@@ -68,6 +68,15 @@ public class PdfToolController {
             String name=Optional.ofNullable(files.get(0).getOriginalFilename()).orElse("input");var options=new HashMap<>(params);options.remove("tool");
             workers.execute(()->process(id,owner,day,units,tool,content,name,options));return Map.of("id",id);
         } catch(Exception e){db.update("DELETE FROM pdf_tool_job WHERE id=?",id);refund(owner,day,units);if(e instanceof RejectedExecutionException)throw new ApiError(429,"当前处理繁忙，请稍后重试");throw e;}
+    }
+    private final java.util.concurrent.Semaphore watermarkSlots=new java.util.concurrent.Semaphore(2);
+    @PostMapping(value="/watermarks/{action}",consumes="multipart/form-data") public Map<String,Object> watermarks(
+        @RequestHeader(value="Authorization",required=false)String header,@PathVariable String action,@RequestParam("files")List<MultipartFile> files,@RequestParam(defaultValue="")String candidateIds)throws Exception {
+        visitor(header);
+        if(!Set.of("inspect","preview").contains(action))throw new ApiError(400,"操作无效");
+        if(files.size()!=1||files.get(0).isEmpty()||files.get(0).getSize()>20L*1024*1024)throw new ApiError(400,"请选择一个20MB以内的PDF");
+        if(!watermarkSlots.tryAcquire())throw new ApiError(429,"处理繁忙，请稍后重试");
+        try{byte[] bytes=files.get(0).getBytes();return action.equals("inspect")?PdfWatermarks.inspect(bytes):PdfWatermarks.preview(bytes,candidateIds);}finally{watermarkSlots.release();}
     }
     private Path resultPath(String id){return Path.of(directory).toAbsolutePath().resolve(id+".bin");}
     private void process(String id,String owner,LocalDate day,int units,String tool,List<byte[]> content,String name,Map<String,String> options){

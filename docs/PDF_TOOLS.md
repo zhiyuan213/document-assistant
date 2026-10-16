@@ -75,3 +75,11 @@ Dockerfile 已安装 LibreOffice Writer 和 WenQuanYi 中文字体，初次构�
 灰白猫由 imagegen 内置工具生成透明 PNG，原图 `branding/pdf-cat-original.png` 保留，页面使用优化尺寸的 `frontend/src/static/brand/pdf-cat.png`。完整生成提示词在 `branding/pdf-cat-prompt.txt`。
 
 ![新版首页](previews/pdf-home.png)
+
+## AI 精简与报告导出（2026-10-16）
+
+AI仅接受 summary、translate 两种模式。总结按文档概览、重点内容、主要结论、待办事项生成报告。POST /api/pdf/ai/export 接收 content 与 format（docx/pdf），需设备凭证；使用已生成内容导出，不调用模型、不扣AI额度。PDF复用LibreOffice Writer转换，仍需部署该组件与中文字体。
+
+估算和执行翻译均接收 targetLanguage：zh-CN、zh-TW、en、ja、ko、fr、de、es、pt、ru、ar、it。选项分别为简体中文、繁体中文、英语、日语、韩语、法语、德语、西班牙语、葡萄牙语、俄语、阿拉伯语、意大利语。源语言自动识别，输出文字译文，不承诺保留原PDF版式。达到模型输出上限会明确提示未完整生成，建议拆分后处理。
+
+基础去水印：POST /api/pdf/watermarks/inspect 检测候选；/watermarks/preview 根据 candidateIds 生成前后预览与短期凭证。常规 jobs 接口使用 remove-watermark、candidateIds、previewProof 生成新PDF，原文件不改动。候选可能是正文或装饰，需用户确认预览。当前凭证限单实例、10分钟有效。

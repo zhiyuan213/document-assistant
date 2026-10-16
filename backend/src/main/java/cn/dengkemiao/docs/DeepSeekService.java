@@ -65,6 +65,7 @@ public class DeepSeekService {
             JsonNode result = json.readTree(response.body());
             String answer = result.path("choices").path(0).path("message").path("content").asText("");
             if (answer.isBlank()) throw new ApiError(502, "AI 没有返回有效内容，请调整问题后重试");
+            if ("length".equals(result.path("choices").path(0).path("finish_reason").asText())) answer += "\n\n【内容未完整生成：已达到单次输出上限，请拆分文档后处理。本次按实际用量结算。】";
             JsonNode usage = result.path("usage");
             if (!usage.path("prompt_tokens").canConvertToInt() || !usage.path("completion_tokens").canConvertToInt()
                     || usage.path("prompt_tokens").asInt()<0 || usage.path("completion_tokens").asInt()<0)

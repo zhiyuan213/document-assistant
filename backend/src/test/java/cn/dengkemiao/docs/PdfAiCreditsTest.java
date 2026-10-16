@@ -37,6 +37,22 @@ class PdfAiCreditsTest {
         db.update("UPDATE pdf_ai_wallet SET topup_balance=? WHERE visitor_id=?",topup,id);
         return id;
     }
+    @Test void translationUsesSelectedLanguageAndRejectsRetiredModes() throws Exception {
+        String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).get("token").asText();
+        var file=new org.springframework.mock.web.MockMultipartFile("files","synthetic.pdf","application/pdf",samplePdf());
+        when(model.enabled()).thenReturn(true);
+        when(model.complete(anyString(),anyString(),anyInt(),anyBoolean())).thenReturn(new DeepSeekService.Result("Translated text",100,25));
+        org.springframework.test.util.ReflectionTestUtils.setField(ai,"testMode",true);
+        try {
+            mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").header("Authorization","Bearer "+token)).andExpect(status().isOk());
+            verify(model).complete(contains("指定的目标语言"),contains("目标语言：英语"),anyInt(),eq(false));
+            mvc.perform(multipart("/api/pdf/ai/estimate").file(file).param("mode","translate").param("targetLanguage","invalid").header("Authorization","Bearer "+token)).andExpect(status().isBadRequest());
+            mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","watermark").header("Authorization","Bearer "+token)).andExpect(status().isBadRequest());
+            mvc.perform(post("/api/pdf/ai/export").header("Authorization","Bearer "+token).contentType("application/json").content(json.writeValueAsString(Map.of("content","一、重点内容\n测试报告","format","docx")))).andExpect(status().isOk()).andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.containsString(".docx")));
+            verify(model,times(1)).complete(anyString(),anyString(),anyInt(),anyBoolean());
+            mvc.perform(post("/api/pdf/ai/export").contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(ai,"testMode",false);}
+    }
     @Test void spendsMonthlyBeforeTopupAndReturnsUnusedToOriginalSource() {
         String id=owner(true,1000);
         db.update("UPDATE pdf_ai_wallet SET monthly_used=1999900 WHERE visitor_id=?",id);

@@ -4,7 +4,7 @@
 轻松搞定。" subtitle="免费转换与编辑，常用工具都在这里。" badge="基础工具永久免费"/>
   <view class="ui-section-row"><text class="ui-section-title">常用工具</text><text class="ui-link" @click="allTools">全部工具 ›</text></view>
   <view class="ui-tool-grid"><PdfToolTile v-for="tool in pdfTools.slice(0,6)" :key="tool.id" :label="tool.label" :color="tool.color" :title="tool.title" :caption="toolCaptions[tool.id]" @click="openPdfTool(tool.id)"/></view>
-  <view class="ai-entry" @click="openAi"><view class="ai-symbol">✦</view><view class="ai-entry-copy"><view>让 AI 帮你读懂 PDF <text class="ai-tag">AI</text></view><text>长文变摘要，复杂信息一问即懂</text></view><text class="entry-arrow">›</text></view>
+  <view class="ai-entry" @click="openAi"><view class="ai-symbol">✦</view><view class="ai-entry-copy"><view>让 AI 帮你读懂 PDF <text class="ai-tag">AI</text></view><text>总结成报告，常用语言轻松翻译</text></view><text class="entry-arrow">›</text></view>
   <view class="membership-line"><text>{{member?.active?'AI 月卡有效至 '+expiryText(member.expiresAt):'AI 月卡与加油包，按用量扣额度'}}</text><text @click="credits">查看额度 ›</text></view>
   <view v-if="saved.length" class="saved-line"><text class="ui-caption">我的收藏</text><text v-for="id in saved.slice(0,3)" :key="id" @click="openPdfTool(id)">{{pdfTools.find(t=>t.id===id)?.title}}</text></view>
   <view class="home-note">无需注册 · 文件临时处理 · 结果 30 分钟后清理</view>

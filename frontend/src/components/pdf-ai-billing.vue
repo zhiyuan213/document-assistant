@@ -1,10 +1,6 @@
 <template>
  <view class="billing-rules">
-  <view class="billing-title">扣费说明</view>
-  <view class="billing-formula">扣除额度 = 输入 Token + 输出 Token × 4</view>
-  <view>先用月额度，再用加油包。估算不扣额度，确认后预占，完成后按实际用量结算并退回多余预占。</view>
-  <view class="billing-caution">请求发出后，失败或超时也可能扣费或保留预占额度。</view>
-  <button class="billing-toggle" @click="expanded=!expanded">{{expanded?'收起详细规则 −':'查看详细扣费规则 ＋'}}</button>
+  <button class="billing-toggle" :aria-expanded="expanded" @click="expanded=!expanded"><text class="billing-title">扣费说明</text><text class="billing-toggle-label">{{expanded?'收起 −':'展开查看 ＋'}}</text></button>
   <view v-if="expanded" class="billing-details">
   <view>按实际 Token 用量扣额度，不按文件数或处理次数收费。Token 是 AI 处理文字和图片的计量单位，不等于字数；输入包含文档内容、问题和处理指令，输出是 AI 生成的回答。</view>
   <view class="billing-formula">扣除额度 = 输入 Token × 1 + 输出 Token × 4</view>
@@ -21,5 +17,5 @@ import {ref} from 'vue'
 const expanded=ref(false)
 </script>
 <style scoped>
-.billing-rules{margin:24rpx 0;padding:22rpx 24rpx;background:#fff;border:1rpx solid #e5edf7;border-radius:20rpx;color:#73839b;font-size:24rpx;line-height:1.8}.billing-title{font-size:28rpx;font-weight:600;color:#172b4d;margin-bottom:10rpx}.billing-formula{color:#246bfd;font-size:24rpx;font-weight:600;margin-bottom:10rpx}.billing-caution{margin-top:10rpx;color:#8d7449}.billing-toggle{display:flex;align-items:center;justify-content:flex-start;min-height:64rpx;font-size:24rpx;line-height:1.6;color:#246bfd;background:transparent;padding:12rpx 0 0;margin:0}.billing-toggle::after{border:0}.billing-details{border-top:1rpx solid #e5edf7;margin-top:14rpx;padding-top:6rpx}.billing-details>view{margin-top:14rpx}
+.billing-rules{margin:24rpx 0;padding:22rpx 24rpx;background:#fff;border:1rpx solid #e5edf7;border-radius:20rpx;color:#73839b;font-size:24rpx;line-height:1.8}.billing-title{font-size:28rpx;font-weight:600;color:#172b4d;margin:0}.billing-formula{color:#246bfd;font-size:24rpx;font-weight:600;margin-bottom:10rpx}.billing-caution{margin-top:10rpx;color:#8d7449}.billing-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:64rpx;font-size:24rpx;line-height:1.6;color:#246bfd;background:transparent;padding:0;margin:0}.billing-toggle-label{font-size:24rpx;font-weight:400;color:#246bfd}.billing-toggle::after{border:0}.billing-details{border-top:1rpx solid #e5edf7;margin-top:14rpx;padding-top:6rpx}.billing-details>view{margin-top:14rpx}
 </style>

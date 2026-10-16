@@ -39,6 +39,7 @@ public class PdfTools {
         boolean imageWatermark=tool.equals("sign")||tool.equals("watermark")&&"image".equals(options.get("watermarkMode"));
         if(files.size()!=(imageWatermark?2:1)) throw new ApiError(400,imageWatermark?"请选择PDF和水印图片":"此工具每次处理一个文件");
         byte[] input=files.get(0);
+        if(tool.equals("remove-watermark"))return out(PdfWatermarks.remove(input,options.getOrDefault("candidateIds",""),options.getOrDefault("previewProof","")),"pdf");
         if(tool.equals("compress")) return out(pdf.compress(input,switch(options.getOrDefault("compression","standard")){case "light"->0.85f;case "strong"->0.40f;default->0.65f;}),"pdf");
         if(Set.of("word-pdf","excel-pdf","ppt-pdf").contains(tool)) return office(input,filename,tool);
         String password=options.getOrDefault("password","");

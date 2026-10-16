@@ -41,7 +41,7 @@ async function bytes(path) {
   return new Promise((resolve, reject) => wx.getFileSystemManager().readFile({ filePath: path, success: r => resolve(new Uint8Array(r.data)), fail: reject }))
   // #endif
 }
-export async function submitPdf(tool, files, options) {
+export async function submitPdf(tool, files, options, endpoint = '/jobs') {
   await visitor()
   const boundary = 'DengkePdf' + Date.now(), chunks = [], utf8 = s => Uint8Array.from(unescape(encodeURIComponent(s)), c => c.charCodeAt(0))
   for (const [index, file] of files.entries()) {
@@ -52,22 +52,22 @@ export async function submitPdf(tool, files, options) {
   chunks.push(utf8(`--${boundary}--\r\n`))
   const body = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0)); let offset = 0
   for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length }
-  return raw('/jobs', 'POST', body.buffer, { 'Content-Type': 'multipart/form-data; boundary=' + boundary })
+  return raw(endpoint, 'POST', body.buffer, { 'Content-Type': 'multipart/form-data; boundary=' + boundary })
 }
-async function postPdfAi(path, mode, files, prompt, page) {
+async function postPdfAi(path, mode, files, prompt, page, targetLanguage) {
   await visitor()
   const boundary = 'DengkePdfAi' + Date.now(), chunks = [], utf8 = s => Uint8Array.from(unescape(encodeURIComponent(s)), c => c.charCodeAt(0))
   for (const [index, file] of files.entries()) {
     chunks.push(utf8(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="ai-input-${index}.pdf"\r\nContent-Type: application/pdf\r\n\r\n`), await bytes(file.path), utf8('\r\n'))
   }
-  for (const [key, value] of Object.entries({ mode, prompt, page })) chunks.push(utf8(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`))
+  for (const [key, value] of Object.entries({ mode, prompt, page, targetLanguage })) chunks.push(utf8(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`))
   chunks.push(utf8(`--${boundary}--\r\n`))
   const body = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0)); let offset = 0
   for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length }
   return raw(path, 'POST', body.buffer, { 'Content-Type': 'multipart/form-data; boundary=' + boundary })
 }
-export function estimatePdfAi(mode, files, prompt = '', page = 1) { return postPdfAi('/ai/estimate', mode, files, prompt, page) }
-export function submitPdfAi(mode, files, prompt = '', page = 1) { return postPdfAi('/ai', mode, files, prompt, page) }
+export function estimatePdfAi(mode, files, prompt = '', page = 1, targetLanguage = 'zh-CN') { return postPdfAi('/ai/estimate', mode, files, prompt, page, targetLanguage) }
+export function submitPdfAi(mode, files, prompt = '', page = 1, targetLanguage = 'zh-CN') { return postPdfAi('/ai', mode, files, prompt, page, targetLanguage) }
 export async function savePdf(job) {
   const url = baseURL + '/api/pdf/jobs/' + job.id + '/file', header = { Authorization: 'Bearer ' + uni.getStorageSync(tokenKey) }, name = '登科喵结果.' + job.extension
   // #ifdef H5
@@ -122,6 +122,23 @@ export function openSavedPdf(file, platform) {
     }
   })
   // #endif
+}
+
+export async function exportAiReport(content, format) {
+ await visitor()
+ const url=baseURL+'/api/pdf/ai/export',header={Authorization:'Bearer '+uni.getStorageSync(tokenKey),'Content-Type':'application/json'},name='AI总结报告.'+format
+ // #ifdef H5
+ const response=await fetch(url,{method:'POST',headers:header,body:JSON.stringify({content,format})})
+ if(!response.ok){const detail=await response.json().catch(()=>({}));throw new Error(detail.message||'导出失败，请重试')}
+ const object=URL.createObjectURL(await response.blob()),a=document.createElement('a');a.href=object;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(object),30000)
+ // #endif
+ // #ifdef MP-WEIXIN
+ const response=await new Promise((resolve,reject)=>uni.request({url,method:'POST',header,data:{content,format},responseType:'arraybuffer',timeout:120000,success:resolve,fail:e=>reject(networkError(e))}))
+ if(response.statusCode!==200)throw new Error('导出失败（HTTP '+response.statusCode+'），请稍后重试')
+ const path=wx.env.USER_DATA_PATH+'/ai-report-'+Date.now()+'.'+format
+ await new Promise((resolve,reject)=>wx.getFileSystemManager().writeFile({filePath:path,data:response.data,success:resolve,fail:e=>reject(fileError('保存文件',e))}))
+ return {path,name,extension:format}
+ // #endif
 }
 
 export async function pollPdfJob(read, { active = () => true, onProgress = () => {}, interval = 1200, missingRetries = 5 } = {}) {

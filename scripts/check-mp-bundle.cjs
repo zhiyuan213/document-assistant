@@ -13,6 +13,12 @@ function scan(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, entry.name)
     if (entry.isDirectory()) { scan(file); continue }
+    if (entry.name.endsWith('.wxss')) {
+      const css = fs.readFileSync(file, 'utf8')
+      // WXSS rejects an implicit universal selector before a pseudo-class.
+      // Vue/Vite accepts it, so catch it in the compiled mini-program bundle.
+      if (/[>+~]\s*:/.test(css)) failures.push('Unsupported WXSS selector: ' + path.relative(root, file))
+    }
     if (!entry.name.endsWith('.js')) continue
     checked++
     const source = fs.readFileSync(file, 'utf8')
