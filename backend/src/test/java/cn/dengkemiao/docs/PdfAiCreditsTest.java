@@ -94,10 +94,13 @@ class PdfAiCreditsTest {
         credits.settle(id,reservation,600);
         assertEquals(400,credits.snapshot(id).total());
     }
-    @Test void insufficientBalanceDoesNotChangeEitherSource() {
+    @Test void positiveBalanceAllowsLargerTaskAndRefundsUnusedCredits() {
         String id=owner(false,500);
-        assertThrows(ApiError.class,()->credits.reserve(id,501));
-        assertEquals(500,credits.snapshot(id).total());
+        var reserved=credits.reserve(id,501);
+        assertEquals(500,reserved.credits());
+        assertEquals(0,credits.snapshot(id).total());
+        assertEquals(400,credits.settle(id,reserved,400).credits());
+        assertEquals(100,credits.snapshot(id).total());
     }
     @Test void concurrentRequestsCannotSpendTheSameBalance() throws Exception {
         String id=owner(false,1000);
@@ -105,9 +108,9 @@ class PdfAiCreditsTest {
             var gate=new CountDownLatch(1);
             Callable<Boolean> task=()->{gate.await();try{credits.reserve(id,700);return true;}catch(ApiError e){return false;}};
             var first=pool.submit(task);var second=pool.submit(task);gate.countDown();
-            assertNotEquals(first.get(10,TimeUnit.SECONDS),second.get(10,TimeUnit.SECONDS));
+            assertTrue(first.get(10,TimeUnit.SECONDS));assertTrue(second.get(10,TimeUnit.SECONDS));
         }
-        assertEquals(300,credits.snapshot(id).total());
+        assertEquals(0,credits.snapshot(id).total());
     }
     @Test void newCycleResetsMonthlyButRetainsTopupAndDoesNotRestoreExpiredReservation() {
         String id=owner(true,900);
@@ -126,9 +129,10 @@ class PdfAiCreditsTest {
     }
     @Test void underestimatedUsageIsAccountedForAndBlocksFurtherSpending() {
         String id=owner(false,100);var reservation=credits.reserve(id,100);
-        credits.settle(id,reservation,120);
-        assertEquals(-20,credits.snapshot(id).topup());assertEquals(0,credits.snapshot(id).total());
+        assertEquals(100,credits.settle(id,reservation,120).credits());
+        assertEquals(0,credits.snapshot(id).topup());assertEquals(0,credits.snapshot(id).total());
         assertThrows(ApiError.class,()->credits.reserve(id,1));
+        credits.grantTopup(id,50);assertEquals(50,credits.snapshot(id).total());
     }
     @Test void sameWechatIdentitySharesWallet() {
         String first=owner(false,700),second=owner(false,0),openid=UUID.randomUUID().toString();
@@ -163,6 +167,30 @@ class PdfAiCreditsTest {
         mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","summary").header("Authorization","Bearer "+token))
                 .andExpect(status().isTooManyRequests());
         assertEquals(19800,credits.snapshot(id).topup());
+    }
+    @Test void oneCreditCanRunWithoutEstimateAndUsageLedgerOnlyRecordsActualDebit() throws Exception {
+        String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();
+        String hash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String id=db.queryForObject("SELECT id FROM pdf_visitor WHERE token_hash=?",String.class,hash);
+        credits.grantTopup(id,1);
+        when(model.enabled()).thenReturn(true);
+        when(model.complete(anyString(),anyString(),anyInt(),anyBoolean())).thenReturn(new DeepSeekService.Result("Summary",100,25));
+        var file=new org.springframework.mock.web.MockMultipartFile("files","synthetic.pdf","application/pdf",samplePdf());
+        mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","summary").header("Authorization","Bearer "+token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.usedTokenCredits").value(1))
+                .andExpect(jsonPath("$.topupChargedCredits").value(1)).andExpect(jsonPath("$.actualTokenCredits").value(200));
+        assertEquals(0,credits.snapshot(id).total());
+        assertEquals(1L,db.queryForObject("SELECT used_credits FROM pdf_ai_usage WHERE visitor_id=?",Long.class,id));
+        mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","summary").header("Authorization","Bearer "+token)).andExpect(status().isPaymentRequired());
+        verify(model,times(1)).complete(anyString(),anyString(),anyInt(),anyBoolean());
+    }
+    @Test void underestimatedUsageUsesBothSourcesWithoutDebt() {
+        String id=owner(true,50);
+        db.update("UPDATE pdf_ai_wallet SET monthly_used=1999900 WHERE visitor_id=?",id);
+        var reserved=credits.reserve(id,20);
+        var charged=credits.settle(id,reserved,200);
+        assertEquals(150,charged.credits());assertEquals(100,charged.monthly());assertEquals(50,charged.topup());
+        assertEquals(0,credits.snapshot(id).total());
     }
     private byte[] samplePdf() throws Exception {
         try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var out=new java.io.ByteArrayOutputStream()) {

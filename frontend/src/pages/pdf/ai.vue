@@ -1,7 +1,7 @@
 <template>
  <view class="pdf-screen ai-page" :style="headerPadding(24,true)">
   <PdfPageHeader title="读得更少，
-懂得更多。" eyebrow="AI 文档工作台" subtitle="整理重点报告，翻译常用语言。" badge="按用量扣额度 · 先估算再处理"/>
+懂得更多。" eyebrow="AI 文档工作台" subtitle="整理重点报告，翻译常用语言。" badge="按实际用量扣额度"/>
   <view class="ui-section-row"><text class="ui-section-title">AI 文档助手</text><text class="ui-link" @click="openCredits">我的额度 ›</text></view>
   <view v-if="status.testMode" class="ui-notice">测试模式 · 不扣用户额度。实际调用仍产生接口费用，每日上限仍有效。</view>
   <view v-if="statusError" class="ui-notice">{{statusError}}<text class="notice-link" @click="refreshStatus">重新检查 ›</text></view>
@@ -18,10 +18,8 @@
   <picker v-if="mode==='translate'" :disabled="busy || translationPending" :range="languages" range-key="title" :value="languageIndex" @change="languageIndex=Number($event.detail.value)"><view class="ui-input language-picker">{{languages[languageIndex].title}} <text>点击选择 ›</text></view></picker>
   <view v-if="mode==='translate'" class="ui-caption">自动识别原文语言。提供文本、Word及保留版式的PDF；扫描页需OCR重建，复杂底纹和表格请核对。</view>
   <textarea v-if="mode==='translate'" v-model="prompt" :disabled="busy || translationPending" class="ui-input prompt" maxlength="1000" placeholder="补充要求（选填），例如：保留产品名称、使用正式语气" />
-  <view v-if="estimate" class="estimate"><view class="estimate-title">用量预估</view><view v-if="!estimate.documentTranslation">预计输入 {{formatCredits(estimate.estimatedInputTokens)}} Token</view><view v-else>整份文档共 {{estimate.pages}} 页，按分段翻译的累计用量估算。</view><view v-for="warning in estimate.warnings||[]" :key="warning">{{warning}}</view><view v-if="estimate.testMode">测试模式：预占和实际扣用户额度均为 0。</view><view v-else>预计预占 {{formatCredits(estimate.reservedTokenCredits)}} 加权额度；完成后按实际用量结算，多余预占退回，实际用量可能超过预估。</view><view v-if="!estimate.canRun" class="error-inline">{{estimate.testMode?'今日次数已用完，请明日再试。':'额度或今日次数不足，请查看我的额度。'}}</view><text v-if="!estimate.canRun && !estimate.testMode" class="notice-link" @click="openCredits">查看我的额度 ›</text></view>
   <PdfAiBilling v-if="!status.testMode" />
-  <button class="ui-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length || (estimate && !estimate.canRun)))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':estimate?(estimate.testMode?'开始测试 · 不扣额度':'确认并'+current.action):'免费估算用量'}}</button>
-  <view class="privacy">估算仅在本服务提取文字；确认分析后，文档文字才会发送至 DeepSeek。AI 结果请核对原文，原 PDF 不会被修改。</view>
+  <button class="ui-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':current.action}}</button>
   <view v-if="error" class="error" role="alert">{{error}}</view>
   <view v-if="answer" class="answer ui-card"><view class="ui-section-title">{{mode==='summary'?'总结报告':'翻译结果'}}</view><view v-if="chargedCredits!==null" class="charged">{{usageDetails?.testMode?'测试模式 · 本次不扣用户额度':'本次扣除 '+formatCredits(chargedCredits)+' 加权额度'}}</view><view v-if="usageDetails" class="usage-details">输入 {{formatCredits(usageDetails.inputTokens)}} Token · 输出 {{formatCredits(usageDetails.outputTokens)}} Token<view v-if="!usageDetails.testMode">月额度扣 {{formatCredits(usageDetails.monthlyChargedCredits)}} · 加油包扣 {{formatCredits(usageDetails.topupChargedCredits)}}</view></view><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word {{exportFormat==='docx'?'✓':''}}</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF {{exportFormat==='pdf'?'✓':''}}</button></view>
    <view v-if="pdfUnavailable" class="ui-notice">译文超出原文字区域或字体无法还原，本次未生成保留版式的 PDF，可选择 Word。</view>
@@ -36,7 +34,7 @@ import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import PdfToolTile from '../../components/PdfToolTile.vue'
 import {headerPadding} from '../../lib/layout'
 import {onLoad,onShow} from '@dcloudio/uni-app'
-import {pdfRequest,estimatePdfAi,submitPdfAi,exportAiReport,shareSavedFile,saveFileToPhone} from '../../lib/pdf-api'
+import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile,saveFileToPhone} from '../../lib/pdf-api'
 
 const modeColors=['#5875df','#388bcb'],modeLabels=['总','译']
 const modes=[
@@ -47,10 +45,12 @@ const languages=[{id:'zh-CN',title:'简体中文'},{id:'zh-TW',title:'繁体中�
 const languageIndex=ref(0),exporting=ref(false),exportFile=ref(null)
 const translationJob=ref(''),translationWarnings=ref([]),translationPending=ref(false)
 const translationKey='pdf-translation-job-v1',translationRequestKey='pdf-translation-request-v1'
-const mode=ref('summary'),selected=ref([]),prompt=ref(''),page=ref('1'),answer=ref(''),error=ref(''),busy=ref(false),busyLabel=ref('正在处理…'),estimate=ref(null),chargedCredits=ref(null),usageDetails=ref(null)
+const mode=ref('summary'),selected=ref([]),prompt=ref(''),page=ref('1'),answer=ref(''),error=ref(''),busy=ref(false),busyLabel=ref('正在处理…'),chargedCredits=ref(null),usageDetails=ref(null)
 const exportFormat=ref('docx')
 const pdfUnavailable=computed(()=>mode.value==='translate' && usageDetails.value?.pdfAvailable===false)
-watch(answer,()=>{exportFile.value=null;exportFormat.value='docx';if(answer.value&&miniProgram)exportReport('docx')})
+const preparedFiles=new Map()
+let exportGeneration=0
+watch(answer,()=>{exportGeneration++;preparedFiles.clear();exportFile.value=null;exportFormat.value='docx';if(answer.value&&miniProgram)exportReport('docx')})
 const statusLoaded=ref(false),statusError=ref('')
 const status=ref({enabled:false,vip:false,testMode:false,canUse:false,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0,dailyLimit:50,dailyRemaining:0,monthlyTokenCredits:2000000,usedTokenCredits:0,remainingTokenCredits:0})
 const current=computed(()=>modes.find(x=>x.id===mode.value)||modes[0])
@@ -59,15 +59,14 @@ let miniProgram=false
 miniProgram=true
 // #endif
 const pickerText=computed(()=>miniProgram?'从微信聊天选择 PDF':'点击选择 PDF 文件')
-watch([mode,prompt,page,languageIndex,()=>selected.value.map(f=>`${f.path}:${f.size}`).join('|')],()=>{estimate.value=null})
 watch([mode,prompt,languageIndex],()=>{if(!busy.value&&!translationPending.value){answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}})
 onLoad(options=>{if(modes.some(item=>item.id===options?.mode))mode.value=options.mode})
 onShow(()=>{refreshStatus();if(!busy.value&&!answer.value&&(uni.getStorageSync(translationKey)||uni.getStorageSync(translationRequestKey)))resumeTranslation()})
-async function refreshStatus(){statusError.value='';statusLoaded.value=false;try{status.value=await pdfRequest('/ai/status');statusLoaded.value=true;estimate.value=null}catch(e){status.value={...status.value,enabled:false};statusError.value=e.status===404?'当前服务器尚未提供 AI 接口，请部署包含 AI 功能的后端版本。':'无法获取 AI 服务状态，请稍后重试。'}}
-function selectMode(id){if(busy.value||exporting.value||translationPending.value)return;exportFile.value=null;mode.value=id;answer.value='';error.value='';estimate.value=null;translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);if(id!=='compare'&&selected.value.length>1)selected.value=selected.value.slice(0,1)}
+async function refreshStatus(){statusError.value='';statusLoaded.value=false;try{status.value=await pdfRequest('/ai/status');statusLoaded.value=true}catch(e){status.value={...status.value,enabled:false};statusError.value=e.status===404?'当前服务器尚未提供 AI 接口，请部署包含 AI 功能的后端版本。':'无法获取 AI 服务状态，请稍后重试。'}}
+function selectMode(id){if(busy.value||exporting.value||translationPending.value)return;exportFile.value=null;mode.value=id;answer.value='';error.value='';translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);if(id!=='compare'&&selected.value.length>1)selected.value=selected.value.slice(0,1)}
 function chooseFiles(){
  if(busy.value||exporting.value||translationPending.value)return
- const success=r=>{const files=(r.tempFiles||[]).map(f=>({path:f.path||f.tempFilePath,name:f.name||'document.pdf',size:f.size||0}));if(files.some(f=>f.size>20*1024*1024)){error.value='单个 PDF 不能超过20MB';return}if(!files.length)return;selected.value=files.slice(0,1);error.value='';estimate.value=null;answer.value='';exportFile.value=null;chargedCredits.value=null;usageDetails.value=null;translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
+ const success=r=>{const files=(r.tempFiles||[]).map(f=>({path:f.path||f.tempFilePath,name:f.name||'document.pdf',size:f.size||0}));if(files.some(f=>f.size>20*1024*1024)){error.value='单个 PDF 不能超过20MB';return}if(!files.length)return;selected.value=files.slice(0,1);error.value='';answer.value='';exportFile.value=null;chargedCredits.value=null;usageDetails.value=null;translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
  // #ifdef H5
  uni.chooseFile({count:1,type:'file',extension:['.pdf'],success,fail:()=>{}})
  // #endif
@@ -75,7 +74,7 @@ function chooseFiles(){
  wx.chooseMessageFile({count:1,type:'file',extension:['pdf'],success,fail:r=>{if(!String(r.errMsg||'').includes('cancel'))error.value='选择 PDF 失败，请重试'}})
  // #endif
 }
-function removeFile(index){if(busy.value||exporting.value||translationPending.value)return;selected.value.splice(index,1);answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;estimate.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
+function removeFile(index){if(busy.value||exporting.value||translationPending.value)return;selected.value.splice(index,1);answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
 function primaryAction(){if(translationPending.value){resumeTranslation();return}if(!status.value.canUse){openCredits();return}run()}
 async function run(){
  if(busy.value)return
@@ -86,12 +85,11 @@ async function run(){
  if(['chat','explain'].includes(mode.value)&&!prompt.value.trim()){error.value='请先填写问题';return}
  busy.value=true
  try{
-  if(!estimate.value){busyLabel.value='正在估算用量…';estimate.value=await estimatePdfAi(mode.value,selected.value,prompt.value,1,languages[languageIndex.value].id);status.value={...status.value,remainingTokenCredits:estimate.value.remainingTokenCredits};return}
   let requestId=''
   if(mode.value==='translate'){requestId=uni.getStorageSync(translationRequestKey)||Date.now()+'-'+Math.random().toString(36).slice(2);uni.setStorageSync(translationRequestKey,requestId);translationPending.value=true}
   busyLabel.value='正在分析…';let result=await submitPdfAi(mode.value,selected.value,prompt.value,1,languages[languageIndex.value].id,requestId)
   if(result.translationJobId){translationJob.value=result.translationJobId;translationPending.value=true;uni.setStorageSync(translationKey,result.translationJobId);result=await waitTranslation(result.translationJobId)}
-  applyResult(result);estimate.value=null;await refreshStatus()
+  applyResult(result);await refreshStatus()
  }
  catch(e){error.value=e.message||'AI 分析失败，请重试';if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}
  finally{busy.value=false}
@@ -109,15 +107,40 @@ async function waitTranslation(id){
 }
 async function resumeTranslation(){if(busy.value)return;let id=translationJob.value||uni.getStorageSync(translationKey);const requestId=uni.getStorageSync(translationRequestKey);if(!id&&!requestId)return;busy.value=true;mode.value='translate';translationPending.value=true;error.value=''
  try{if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}translationJob.value=id;applyResult(await waitTranslation(id));await refreshStatus()}catch(e){error.value=e.message;if(e.status===404){translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey);if(e.message==='请求路径不存在'){error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'}else if(id){uni.removeStorageSync(translationRequestKey)}}}finally{busy.value=false}}
-async function exportReport(format){if(exporting.value||!answer.value)return;exporting.value=true;error.value='';try{exportFile.value=await exportAiReport(answer.value,format,mode.value==='translate'?translationJob.value:'')||null;uni.showToast({title:'导出完成',icon:'none'})}catch(e){error.value=e.message}finally{exporting.value=false}}
-function chooseExportFormat(format){if(exporting.value || (format==='pdf'&&pdfUnavailable.value))return;exportFormat.value=format;exportFile.value=null;if(miniProgram)exportReport(format)}
-function deliverReport(action){
+function exportIdentity(){return JSON.stringify([exportGeneration,mode.value,translationJob.value,answer.value])}
+async function exportReport(format){
+ if(!answer.value)return null
+ const identity=exportIdentity(),key=identity+format
+ try{
+  let pending=preparedFiles.get(key)
+  if(!pending){pending=exportAiReport(answer.value,format,mode.value==='translate'?translationJob.value:'');preparedFiles.set(key,pending)}
+  const file=await pending||null
+  if(identity!==exportIdentity())return null
+  if(exportFormat.value===format)exportFile.value=file
+  return file
+ }catch(e){preparedFiles.delete(key);if(identity===exportIdentity())error.value=e.message;return null}
+}
+function chooseExportFormat(format){
+ if(exporting.value || (format==='pdf'&&pdfUnavailable.value))return
+ exportFormat.value=format;exportFile.value=null
+ if(miniProgram)exportReport(format)
+}
+async function deliverReport(action){
  if(exporting.value||!answer.value)return
+ error.value=''
+ if(!miniProgram){exporting.value=true;try{await exportAiReport(answer.value,exportFormat.value,mode.value==='translate'?translationJob.value:'');uni.showToast({title:'已开始下载',icon:'none'})}catch(e){error.value=e.message}finally{exporting.value=false}return}
  if(!exportFile.value || exportFile.value.extension!==exportFormat.value){
-  exportReport(exportFormat.value).then(()=>{if(exportFile.value)uni.showToast({title:'文件已准备好，请再次点击'+(action==='share'?'转发':'下载'),icon:'none'})});return
+  const identity=exportIdentity(),format=exportFormat.value
+  const file=await exportReport(format)
+  if(file&&identity===exportIdentity()&&format===exportFormat.value)uni.showToast({title:'文件已准备好，请再次点击'+(action==='share'?'转发':'下载'),icon:'none'})
+  return
  }
- const operation=action==='share'?shareSavedFile(exportFile.value):saveFileToPhone(exportFile.value)
- operation?.catch(e=>{if(!e.cancelled)error.value=e.message})
+ exporting.value=true
+ try{
+  // Native sharing must start in the click handler, before any await.
+  const result=await (action==='share'?shareSavedFile(exportFile.value):saveFileToPhone(exportFile.value))
+  if(!result?.unsupported)uni.showToast({title:action==='share'?'转发成功':'下载成功',icon:'none'})
+ }catch(e){if(!e.cancelled)error.value=e.message}finally{exporting.value=false}
 }
 function formatCredits(value){return Number(value||0).toLocaleString('zh-CN')}
 function openCredits(){uni.navigateTo({url:'/pages/pdf/credits'})}

@@ -71,7 +71,7 @@ public class PdfAiController {
             var plan=translationPlan(fileBytes(files).getFirst());
             long amount=translation.reserve(plan,LANGUAGES.get(targetLanguage),prompt),remaining=remainingCredits(owner);
             return Map.of("reservedTokenCredits",testMode?0L:amount,"estimatedTokenCredits",amount,"testMode",testMode,"remainingTokenCredits",remaining,
-                    "canRun",(testMode||remaining>=amount)&&todayUsed(owner)<boundedDailyLimit(),"pages",plan.pages().size(),"warnings",plan.warnings(),"documentTranslation",true);
+                    "canRun",(testMode||remaining>0)&&todayUsed(owner)<boundedDailyLimit(),"pages",plan.pages().size(),"warnings",plan.warnings(),"documentTranslation",true);
         }
         if (mode.equals("translate")) prompt = translationPrompt(targetLanguage, prompt);
         validateRequest(owner, mode, prompt, files);
@@ -90,7 +90,7 @@ public class PdfAiController {
         long remaining = remainingCredits(owner);
         return Map.of("estimatedInputTokens", estimatedInputTokens, "outputTokenCeiling", outputTokenCeiling,
                 "reservedTokenCredits", testMode ? 0L : estimatedCredits, "estimatedTokenCredits", estimatedCredits, "testMode", testMode, "remainingTokenCredits", remaining,
-                "canRun", (testMode || remaining >= estimatedCredits) && todayUsed(owner) < boundedDailyLimit(), "imageTokenEstimate", imageTokens);
+                "canRun", (testMode || remaining > 0) && todayUsed(owner) < boundedDailyLimit(), "imageTokenEstimate", imageTokens);
     }
 
     @PostMapping(consumes="multipart/form-data") public Map<String, Object> run(
@@ -144,8 +144,8 @@ public class PdfAiController {
         return Map.of("answer", answer, "remainingTokenCredits", remainingCredits(owner), "usedTokenCredits", chargedCredits,
                 "dailyRemaining", Math.max(0, boundedDailyLimit()-todayUsed(owner)),
                 "inputTokens",modelResult.inputTokens(),"outputTokens",modelResult.outputTokens(),
-                "monthlyChargedCredits",reservation.allocation==null?0L:Math.min(chargedCredits,reservation.allocation.monthly()),
-                "topupChargedCredits",reservation.allocation==null?0L:Math.max(0,chargedCredits-reservation.allocation.monthly()),
+                "monthlyChargedCredits",reservation.allocation==null?0L:reservation.settled.monthly(),
+                "topupChargedCredits",reservation.allocation==null?0L:reservation.settled.topup(),
                 "testMode",reservation.allocation==null,"actualTokenCredits",Math.max(0L,modelResult.inputTokens())+4L*Math.max(0L,modelResult.outputTokens()));
         } catch (Exception e) {
             if (!apiAttempted && reservation != null) refund(owner, reservation);
@@ -193,8 +193,8 @@ public class PdfAiController {
                 var response=new HashMap<String,Object>();response.put("answer",result.text());response.put("warnings",result.warnings());
                 response.put("usedTokenCredits",charged);response.put("inputTokens",usage[0]);response.put("outputTokens",usage[1]);
                 response.put("testMode",reservation.allocation==null);response.put("actualTokenCredits",usage[0]+4*usage[1]);
-                response.put("monthlyChargedCredits",reservation.allocation==null?0L:Math.min(charged,reservation.allocation.monthly()));
-                response.put("topupChargedCredits",reservation.allocation==null?0L:Math.max(0,charged-reservation.allocation.monthly()));
+                response.put("monthlyChargedCredits",reservation.allocation==null?0L:reservation.settled.monthly());
+                response.put("topupChargedCredits",reservation.allocation==null?0L:reservation.settled.topup());
                 response.put("pages",plan.pages().size());
                 response.put("pdfAvailable",result.pdf()!=null);
                 response.put("targetLanguage",language);
@@ -350,7 +350,6 @@ public class PdfAiController {
         LocalDate month = month();
         LocalDate day = today();
         boolean free = testMode;
-        long reservedAmount = free ? 0 : credits;
         PdfAiCredits.Reservation allocation = tx.execute(status -> {
             db.queryForList("SELECT id FROM pdf_visitor WHERE id=? FOR UPDATE",owner);
             var reserved = free ? null : this.credits.reserve(owner, credits);
@@ -358,18 +357,20 @@ public class PdfAiController {
             int dailyChanged = db.update("UPDATE pdf_ai_daily_usage SET request_count=request_count+1 WHERE visitor_id=? AND usage_date=? AND request_count<?", owner, day, boundedDailyLimit());
             if (dailyChanged != 1) throw new ApiError(429, "今日 AI 最多处理50次，请明日再试");
             db.update("INSERT INTO pdf_ai_usage(visitor_id,usage_month,request_count,used_credits) VALUES (?,?,0,0) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)", owner, month);
-            db.update("UPDATE pdf_ai_usage SET request_count=request_count+1,used_credits=used_credits+? WHERE visitor_id=? AND usage_month=?", reservedAmount, owner, month);
+            db.update("UPDATE pdf_ai_usage SET request_count=request_count+1,used_credits=used_credits+? WHERE visitor_id=? AND usage_month=?", reserved==null?0:reserved.credits(), owner, month);
             return reserved;
         });
-        return new UsageWindow(month, day, reservedAmount, allocation);
+        return new UsageWindow(month, day, allocation==null?0:allocation.credits(), allocation);
     }
     private long settleTokens(String owner, UsageWindow reservation, DeepSeekService.Result result) {
         long actualCredits = Math.max(0L,result.inputTokens()) + 4L * Math.max(0L,result.outputTokens());
-        long chargedCredits = reservation.allocation==null ? 0 : actualCredits;
-        tx.executeWithoutResult(s -> {
-        if(reservation.allocation!=null) credits.settle(owner, reservation.allocation, actualCredits);
+        long chargedCredits = tx.execute(s -> {
+        var charged = reservation.allocation==null ? null : credits.settle(owner, reservation.allocation, actualCredits);
+        long amount = charged==null?0:charged.credits();
+        reservation.settled = charged;
         db.update("UPDATE pdf_ai_usage SET used_credits=GREATEST(0,used_credits+?),input_tokens=input_tokens+?,output_tokens=output_tokens+? WHERE visitor_id=? AND usage_month=?",
-                chargedCredits-reservation.credits, Math.max(0,result.inputTokens()), Math.max(0,result.outputTokens()), owner, reservation.month);
+                amount-reservation.credits, Math.max(0,result.inputTokens()), Math.max(0,result.outputTokens()), owner, reservation.month);
+        return amount;
         });
         return chargedCredits;
     }
@@ -403,5 +404,13 @@ public class PdfAiController {
         catch (Exception e) { throw new IllegalStateException(e); }
     }
     private record Document(String label, List<String> pages) {}
-    private record UsageWindow(LocalDate month, LocalDate day, long credits, PdfAiCredits.Reservation allocation) {}
+    private static final class UsageWindow {
+        final LocalDate month, day;
+        final long credits;
+        final PdfAiCredits.Reservation allocation;
+        PdfAiCredits.Reservation settled;
+        UsageWindow(LocalDate month, LocalDate day, long credits, PdfAiCredits.Reservation allocation) {
+            this.month=month; this.day=day; this.credits=credits; this.allocation=allocation;
+        }
+    }
 }

@@ -62,21 +62,24 @@ public class PdfAiCredits {
     public Reservation reserve(String owner, long credits) {
         return tx.execute(s -> {
             Snapshot balance = load(owner);
-            if (credits <= 0 || balance.total() < credits) throw new ApiError(402, "AI 额度不足，请购买加油包后继续");
-            long monthly = Math.min(balance.monthly(), credits), topup = credits-monthly;
+            if (credits <= 0 || balance.total() <= 0) throw new ApiError(402, "AI 额度不足，请购买加油包后继续");
+            long amount = Math.min(credits, balance.total());
+            long monthly = Math.min(balance.monthly(), amount), topup = amount-monthly;
             db.update("UPDATE pdf_ai_wallet SET monthly_used=monthly_used+?,topup_balance=topup_balance-? WHERE visitor_id=?", monthly, topup, owner);
-            return new Reservation(credits, monthly, topup, balance.periodEnd());
+            return new Reservation(amount, monthly, topup, balance.periodEnd());
         });
     }
-    public void settle(String owner, Reservation reservation, long actual) {
-        tx.executeWithoutResult(s -> {
+    public Reservation settle(String owner, Reservation reservation, long actual) {
+        return tx.execute(s -> {
             Snapshot balance = load(owner);
-            long monthlyActual = Math.min(actual, reservation.monthly());
-            long topupActual = Math.max(0, actual-reservation.monthly());
+            boolean samePeriod = Objects.equals(balance.periodEnd(), reservation.periodEnd());
+            long monthlyActual = Math.min(Math.max(0, actual), reservation.monthly()+(samePeriod ? balance.monthly() : 0));
+            long topupActual = Math.min(Math.max(0, actual-monthlyActual), reservation.topup()+Math.max(0,balance.topup()));
             // A response arriving after the period ends must not restore expired monthly credits.
             long monthlyRefund = Objects.equals(balance.periodEnd(), reservation.periodEnd()) ? reservation.monthly()-monthlyActual : 0;
-            db.update("UPDATE pdf_ai_wallet SET monthly_used=GREATEST(0,monthly_used-?),topup_balance=topup_balance+? WHERE visitor_id=?",
+            db.update("UPDATE pdf_ai_wallet SET monthly_used=GREATEST(0,monthly_used-?),topup_balance=GREATEST(0,topup_balance+?) WHERE visitor_id=?",
                     monthlyRefund, reservation.topup()-topupActual, owner);
+            return new Reservation(monthlyActual+topupActual,monthlyActual,topupActual,reservation.periodEnd());
         });
     }
     public void grantTopup(String owner, long amount) {
