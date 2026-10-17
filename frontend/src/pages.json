@@ -44,6 +44,12 @@
       "style": {
         "navigationBarTitleText": "登科喵简历助手"
       }
+    },
+    {
+      "path": "pages/pdf/exports",
+      "style": {
+        "navigationBarTitleText": "导出文件"
+      }
     }
   ],
   "tabBar": {
@@ -66,6 +72,12 @@
         "text": "工具",
         "iconPath": "static/tab-1.png",
         "selectedIconPath": "static/tab-1-active.png"
+      },
+      {
+        "pagePath": "pages/pdf/exports",
+        "text": "导出文件",
+        "iconPath": "static/tab-exports.png",
+        "selectedIconPath": "static/tab-exports-active.png"
       }
     ],
     "selectedColor": "#246bfd",

@@ -90,3 +90,9 @@ test('an exposed but unsupported disk API uses phone guidance instead of an upda
   assert.equal(result.unsupported,true);assert.ok(modal.content.includes('文件传输助手'));assert.equal(modal.confirmText,'预览文件')
  }finally{globalThis.uni=old}
 })
+
+test('expired exported files never open the native sharing dialog',async()=>{
+ let called=false
+ await assert.rejects(shareSavedFile({...file,expiresAt:Date.now()-1},{shareFileMessage(){called=true}}),/30/)
+ assert.equal(called,false)
+})

@@ -44,9 +44,10 @@ public class PdfTranslationJobs {
         }
     }
     Map<String,Object> state(String owner,String id)throws Exception {
-        var rows=db.queryForList("SELECT status,progress,error_message,result_json FROM pdf_translation_job WHERE id=? AND visitor_id=? AND expires_at>CURRENT_TIMESTAMP",id,owner);
+        var rows=db.queryForList("SELECT status,progress,error_message,result_json,TIMESTAMPDIFF(SECOND,CURRENT_TIMESTAMP,expires_at) AS remaining_seconds FROM pdf_translation_job WHERE id=? AND visitor_id=? AND expires_at>CURRENT_TIMESTAMP",id,owner);
         if(rows.isEmpty())throw new ApiError(404,"翻译任务已过期或不存在，请重新处理");
         var row=rows.getFirst();var result=new HashMap<String,Object>();
+        result.put("expiresAt",java.time.Instant.now().plusSeconds(((Number)row.get("remaining_seconds")).longValue()).toString());
         result.put("translationJobId",id);result.put("status",row.get("status"));result.put("progress",row.get("progress"));
         if(row.get("error_message")!=null)result.put("message",row.get("error_message"));
         if(row.get("result_json")!=null)result.putAll(json.readValue(row.get("result_json").toString(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){}));

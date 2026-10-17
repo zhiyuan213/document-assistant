@@ -46,6 +46,7 @@ import PdfIcon from '../../components/PdfIcon.vue'
 import PdfActions from '../../components/PdfActions.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
 import {pdfRequest,submitPdf,savePdf,openSavedPdf} from '../../lib/pdf-api'
+import {rememberExport} from '../../lib/pdf-export-history'
 import {pollPdfJob} from '../../lib/pdf-job'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),stagePercent=ref(0),stage=ref('正在上传文件…')
 const pages=ref(''),angle=ref(90),startNumber=ref('1'),numberPosition=ref('bottom')
@@ -110,7 +111,7 @@ async function run(){if(busy.value||watermarkBusy.value)return;if(tool.value.id=
   const job=await pollPdfJob(()=>pdfRequest('/jobs/'+created.id),{active:()=>alive,onProgress:job=>{stagePercent.value=job.progress;stage.value=job.status==='syncing'?'文件已上传，正在同步任务状态…':job.status==='queued'?'文件已上传，等待处理…':'正在处理文件…'}})
   if(job){result.value=job;selected.value=[]}
  }catch(e){error.value=e.message;if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}finally{busy.value=false}}
-async function save(){if(saving.value)return;saving.value=true;error.value='';try{preparedFile.value=await savePdf(result.value)||null;if(preparedFile.value)uni.showToast({title:'已下载，请点击下方打开或发送',icon:'none'})}catch(e){error.value=e.message||'下载失败，请重试'}finally{saving.value=false}}
+async function save(){if(saving.value)return;saving.value=true;error.value='';try{preparedFile.value=rememberExport(await savePdf(result.value),{name:tool.value.title+'.'+result.value.extension,expiresAt:result.value.expiresAt||result.value.expires_at,inputTokens:0,outputTokens:0})||null;if(preparedFile.value)uni.showToast({title:'已下载，请点击下方打开或发送',icon:'none'})}catch(e){error.value=e.message||'下载失败，请重试'}finally{saving.value=false}}
 function openPrepared(){error.value='';openSavedPdf(preparedFile.value).catch(e=>{if(!e.cancelled)error.value=e.message})}
 function again(){result.value=null;preparedFile.value=null;error.value=''}
 function openTools(){uni.switchTab({url:'/pages/tools/index'})}

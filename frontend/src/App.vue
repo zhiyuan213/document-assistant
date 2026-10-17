@@ -1,5 +1,7 @@
 <script>
-export default {}
+import {listExportFiles} from './lib/pdf-export-history'
+function cleanupExports(){try{listExportFiles()}catch{}}
+export default {onShow(){cleanupExports();clearInterval(this.exportCleanup);this.exportCleanup=setInterval(cleanupExports,30000)},onHide(){clearInterval(this.exportCleanup)}}
 </script>
 <style>
 @import "./styles/pdf-ui.css";

@@ -126,6 +126,7 @@ export function openSavedPdf(file, platform) {
 
 // Native file dialogs must start directly from a user tap.
 export function shareSavedFile(file, platform) {
+ if(file.expiresAt && file.expiresAt<=Date.now())return Promise.reject(new Error('文件已超过30分钟，请重新处理'))
  // #ifdef MP-WEIXIN
  const native=platform||wx
  return new Promise((resolve,reject)=>{

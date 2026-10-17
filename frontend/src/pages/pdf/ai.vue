@@ -28,6 +28,7 @@
 </template>
 <script setup>
 import {ref,computed,watch} from 'vue'
+import {rememberExport,exportExpiry} from '../../lib/pdf-export-history'
 import PdfAiBilling from '../../components/pdf-ai-billing.vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import PdfToolTile from '../../components/PdfToolTile.vue'
@@ -45,6 +46,7 @@ const languageIndex=ref(0),exporting=ref(false),exportFile=ref(null)
 const translationJob=ref(''),translationWarnings=ref([]),translationPending=ref(false)
 const translationKey='pdf-translation-job-v1',translationRequestKey='pdf-translation-request-v1'
 const mode=ref('summary'),selected=ref([]),page=ref('1'),answer=ref(''),error=ref(''),busy=ref(false),busyLabel=ref('正在处理…'),chargedCredits=ref(null),usageDetails=ref(null)
+let resultExpiresAt=0
 const exportFormat=ref('pdf')
 const pdfUnavailable=computed(()=>mode.value==='translate' && usageDetails.value?.pdfAvailable===false)
 const preparedFiles=new Map()
@@ -104,7 +106,7 @@ async function run(){
  catch(e){error.value=e.message||'AI 分析失败，请重试';if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}
  finally{await refreshStatus();busy.value=false}
 }
-function applyResult(result){if(result.targetLanguage){const index=languages.findIndex(l=>l.id===result.targetLanguage);if(index>=0)languageIndex.value=index}answer.value=result.answer;chargedCredits.value=result.usedTokenCredits;usageDetails.value=result;translationWarnings.value=result.warnings||[];translationPending.value=false}
+function applyResult(result){resultExpiresAt=exportExpiry(result.expiresAt);if(result.targetLanguage){const index=languages.findIndex(l=>l.id===result.targetLanguage);if(index>=0)languageIndex.value=index}answer.value=result.answer;chargedCredits.value=result.usedTokenCredits;usageDetails.value=result;translationWarnings.value=result.warnings||[];translationPending.value=false}
 async function waitTranslation(id){
  for(let i=0;i<180;i++){
   if(i)await new Promise(resolve=>setTimeout(resolve,5000))
@@ -120,10 +122,12 @@ async function resumeTranslation(){if(busy.value)return;let id=translationJob.va
 function exportIdentity(){return JSON.stringify([exportGeneration,mode.value,translationJob.value,answer.value])}
 async function exportReport(format){
  if(!answer.value)return null
+ if(resultExpiresAt && resultExpiresAt<=Date.now()){error.value='文件已超过30分钟，请重新处理';return null}
  const identity=exportIdentity(),key=identity+format
+ const details={name:(selected.value[0]?.name||'AI文档').replace(/\.[^.]+$/,'')+(mode.value==='translate'?'_译文':'_总结')+'.'+format,expiresAt:resultExpiresAt||undefined,inputTokens:usageDetails.value?.inputTokens,outputTokens:usageDetails.value?.outputTokens}
  try{
   let pending=preparedFiles.get(key)
-  if(!pending){pending=exportAiReport(answer.value,format,mode.value==='translate'?translationJob.value:'');preparedFiles.set(key,pending)}
+  if(!pending){pending=exportAiReport(answer.value,format,mode.value==='translate'?translationJob.value:'').then(file=>rememberExport(file,details));preparedFiles.set(key,pending)}
   const file=await pending||null
   if(identity!==exportIdentity())return null
   if(exportFormat.value===format)exportFile.value=file

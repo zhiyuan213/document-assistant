@@ -5,7 +5,7 @@ import vm from 'node:vm'
 const source=(await readFile(new URL('../frontend/src/pages/pdf/ai.vue',import.meta.url),'utf8')).split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm,'')
 function page({lostSubmit=false,restore=false,statusLoader,exporter,delivery=async()=>({})}={}){
  const storage=new Map(restore?[['pdf-translation-request-v1','original-key']]:[]),calls=[],exports=[],toasts=[];let polls=0,pick
- const context={ref:value=>({value}),computed:fn=>({get value(){return fn()}}),watch(){},onLoad(){},onShow(){},headerPadding(){},setTimeout:fn=>queueMicrotask(fn),
+ const context={rememberExport:(file,details)=>file?{...file,...details}:file,exportExpiry:()=>Date.now()+1800000,ref:value=>({value}),computed:fn=>({get value(){return fn()}}),watch(){},onLoad(){},onShow(){},headerPadding(){},setTimeout:fn=>queueMicrotask(fn),
   wx:{chooseMessageFile(options){pick=options}},uni:{getStorageSync:key=>storage.get(key),setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),chooseFile(){},showToast(v){toasts.push(v.title)},navigateTo(){},switchTab(){},setClipboardData(){}},
   pdfRequest:async path=>{calls.push(path);if(path==='/ai/status'&&statusLoader)return statusLoader();if(path==='/ai/status')return {canUse:true,enabled:true,dailyRemaining:100};if(path.startsWith('/ai/translations/by-request/'))return {translationJobId:'saved-job',status:'processing'};if(path.startsWith('/ai/translations/'))return ++polls===1?{status:'processing',progress:50}:{status:'completed',answer:'English result',usedTokenCredits:200,inputTokens:100,outputTokens:25,warnings:['Check OCR']};throw Error(path)},
   estimatePdfAi:async()=>({documentTranslation:true,canRun:true,remainingTokenCredits:2000000}),
