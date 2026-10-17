@@ -29,15 +29,16 @@
  </view>
 </template>
 <script setup>
-import {ref,computed,watch} from 'vue'
+import {nextTick,ref,computed,watch} from 'vue'
 import {rememberExport,exportExpiry} from '../../lib/pdf-export-history'
 import PdfAiBilling from '../../components/pdf-ai-billing.vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import PdfToolTile from '../../components/PdfToolTile.vue'
 import {headerPadding} from '../../lib/layout'
-import {onLoad,onShow} from '@dcloudio/uni-app'
+import {onTabItemTap,onLoad,onShow} from '@dcloudio/uni-app'
 import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile} from '../../lib/pdf-api'
 
+onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const activeStep=ref('mode')
 function toggleStep(step){activeStep.value=activeStep.value===step?'':step}
 const modeColors=['#5875df','#388bcb'],modeLabels=['总','译']

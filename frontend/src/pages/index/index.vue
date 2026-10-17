@@ -11,13 +11,14 @@
  </view>
 </template>
 <script setup>
-import {ref} from 'vue'
-import {onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
+import {nextTick,ref} from 'vue'
+import {onTabItemTap,onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import PdfToolTile from '../../components/PdfToolTile.vue'
 import {pdfTools,openPdfTool,favorites,pdfShare} from '../../lib/pdf-tools'
 import {headerPadding} from '../../lib/layout'
 import {pdfRequest} from '../../lib/pdf-api'
+onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const toolCaptions={'pdf-word':'提取文字','word-pdf':'文档转换',merge:'多份合一',split:'按页拆分',compress:'减小体积',images:'图片成册','pdf-images':'逐页导出',watermark:'添加标记',encrypt:'密码保护'}
 const saved=ref([])
 const member=ref(null),monthlyPrice=ref('9.90')

@@ -14,12 +14,13 @@
  </view>
 </template>
 <script setup>
-import {ref} from 'vue'
+import {nextTick,ref} from 'vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import {headerPadding} from '../../lib/layout'
-import {onShow,onHide,onUnload} from '@dcloudio/uni-app'
+import {onTabItemTap,onShow,onHide,onUnload} from '@dcloudio/uni-app'
 import {listExportFiles} from '../../lib/pdf-export-history'
 import {shareSavedFile} from '../../lib/pdf-api'
+onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const files=ref([]),selected=ref(''),sharing=ref(false),error=ref('')
 let timer
 function refresh(){

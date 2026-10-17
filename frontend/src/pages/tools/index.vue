@@ -10,12 +10,13 @@
  </view>
 </template>
 <script setup>
-import {ref,computed} from 'vue'
-import {onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
+import {nextTick,ref,computed} from 'vue'
+import {onTabItemTap,onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import {headerPadding} from '../../lib/layout'
 import {pdfTools,openPdfTool,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
+onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const onlyFavorites=ref(false),query=ref(''),saved=ref([])
 const category=ref('all')
 const groups=[{id:'all',title:'全部'},{id:'convert',title:'格式转换'},{id:'organize',title:'页面整理'},{id:'edit',title:'优化编辑'},{id:'security',title:'安全保护'}]
