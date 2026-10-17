@@ -1,6 +1,6 @@
 <template>
  <view class="pdf-screen pdf-home" :style="headerPadding(24,true)">
-  <PdfPageHeader title="PDF 的事，
+  <PdfPageHeader :vip="member?.active===true" title="PDF 的事，
 轻松搞定。" subtitle="免费转换与编辑，常用工具都在这里。" badge="基础工具永久免费"/>
   <view class="ui-section-row"><text class="ui-section-title">常用工具</text><text class="ui-link" @click="allTools">全部工具 ›</text></view>
   <view class="ui-tool-grid"><PdfToolTile v-for="tool in pdfTools.slice(0,6)" :key="tool.id" :label="tool.label" :color="tool.color" :title="tool.title" :caption="toolCaptions[tool.id]" @click="openPdfTool(tool.id)"/></view>

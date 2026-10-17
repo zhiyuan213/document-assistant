@@ -1,6 +1,6 @@
 <template>
  <view class="pdf-screen ai-page" :style="headerPadding(24,true)">
-  <PdfPageHeader title="读得更少，
+  <PdfPageHeader :vip="status.vip===true" title="读得更少，
 懂得更多。" eyebrow="AI 文档工作台" subtitle="整理重点报告，翻译常用语言。" badge="按实际用量扣额度"/>
   <view class="ui-section-row"><text class="ui-section-title">AI 文档助手</text><text class="ui-link" @click="openCredits">我的额度 ›</text></view>
   <view v-if="status.testMode" class="ui-notice">测试模式 · 不扣用户额度。实际调用仍产生接口费用，每日上限仍有效。</view>

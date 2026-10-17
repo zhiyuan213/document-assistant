@@ -1,6 +1,6 @@
 <template>
  <view class="pdf-screen exports-page" :style="headerPadding(24,true)">
-  <PdfPageHeader title="读得更少，懂得更多。" eyebrow="AI 文档工作台" subtitle="整理重点报告，翻译常用语言。" badge="按实际用量扣额度"/>
+  <PdfPageHeader :vip="bannerVip" title="读得更少，懂得更多。" eyebrow="AI 文档工作台" subtitle="整理重点报告，翻译常用语言。" badge="按实际用量扣额度"/>
   <view class="ui-heading">导出文件</view>
   <view class="ui-notice">文件只保留 30 分钟，请及时转发保存。</view>
   <view v-if="error" class="export-error">{{error}}</view>
@@ -14,6 +14,7 @@
  </view>
 </template>
 <script setup>
+import {bannerVip,refreshBannerVip} from '../../lib/vip-banner'
 import {formatCount as formatTokens} from '../../lib/format-number'
 import {nextTick,ref} from 'vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
@@ -21,6 +22,7 @@ import {headerPadding} from '../../lib/layout'
 import {onTabItemTap,onShow,onHide,onUnload} from '@dcloudio/uni-app'
 import {listExportFiles} from '../../lib/pdf-export-history'
 import {shareSavedFile} from '../../lib/pdf-api'
+onShow(refreshBannerVip)
 onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const files=ref([]),selected=ref(''),sharing=ref(false),error=ref('')
 let timer

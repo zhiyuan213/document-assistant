@@ -1,6 +1,6 @@
 <template>
  <view class="pdf-screen tool-list" :style="headerPadding(24,true)">
-  <PdfPageHeader title="好工具，都在这里。" eyebrow="你的 PDF 工具箱" subtitle="找到需要的功能，选好文件就开始。" badge="基础工具永久免费"/>
+  <PdfPageHeader :vip="bannerVip" title="好工具，都在这里。" eyebrow="你的 PDF 工具箱" subtitle="找到需要的功能，选好文件就开始。" badge="基础工具永久免费"/>
   <view class="tool-search"><text class="search-mark">⌕</text><input v-model="query" confirm-type="search" placeholder="搜索工具，如：合并、压缩、转 Word" maxlength="60"/><button v-if="query" class="clear-search" aria-label="清空搜索" @click="query=''">×</button></view>
   <view class="tabs"><button :class="{active:!onlyFavorites}" @click="onlyFavorites=false">全部工具</button><button :class="{active:onlyFavorites}" @click="onlyFavorites=true">我的收藏 {{saved.length}}</button></view>
   <view class="category-tabs"><button v-for="group in groups" :key="group.id" :class="{chosen:category===group.id}" @click="category=group.id">{{group.title}}</button></view>
@@ -10,12 +10,14 @@
  </view>
 </template>
 <script setup>
+import {bannerVip,refreshBannerVip} from '../../lib/vip-banner'
 import {nextTick,ref,computed} from 'vue'
 import {onTabItemTap,onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import {headerPadding} from '../../lib/layout'
 import {pdfTools,openPdfTool,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
+onShow(refreshBannerVip)
 onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const onlyFavorites=ref(false),query=ref(''),saved=ref([])
 const category=ref('all')
