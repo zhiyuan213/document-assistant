@@ -19,6 +19,20 @@ class WechatVirtualPaymentTest {
     final ObjectMapper json=new ObjectMapper();
     static final String AES=Base64.getEncoder().withoutPadding().encodeToString(new byte[32]);
     WechatVirtualPayment service(){var s=new WechatVirtualPayment(json);for(var e:Map.of("appId","wx-test","appSecret","secret-test","offerId","12345","appKey","live-key","sandboxKey","sandbox-key","monthlyProduct","ai_monthly","topupProduct","ai_topup","notifyToken","testToken123","encodingKey",AES).entrySet())ReflectionTestUtils.setField(s,e.getKey(),e.getValue());ReflectionTestUtils.setField(s,"environment",0);ReflectionTestUtils.setField(s,"notifyMode","cloudrun");return s;}
+    @SuppressWarnings("unchecked")
+    @Test void upstreamErrorsRetainStageAndNeverExposeSecrets()throws Exception {
+        var s=spy(service());var response=(java.net.http.HttpResponse<String>)mock(java.net.http.HttpResponse.class);
+        var req=HttpRequest.newBuilder(java.net.URI.create("https://api.weixin.qq.com/sns/jscode2session?secret=DO-NOT-LEAK&js_code=PRIVATE-CODE")).GET().build();
+        doReturn(response).when(s).send(any());when(response.statusCode()).thenReturn(403);when(response.body()).thenReturn("DO-NOT-LEAK");
+        ApiError error=assertThrows(ApiError.class,()->s.execute(req));assertTrue(error.getMessage().contains("微信登录接口"));assertTrue(error.getMessage().contains("HTTP 403"));assertFalse(error.getMessage().contains("DO-NOT-LEAK"));
+        when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn("<html>PRIVATE-CODE</html>");error=assertThrows(ApiError.class,()->s.execute(req));assertTrue(error.getMessage().contains("格式异常"));assertFalse(error.getMessage().contains("PRIVATE-CODE"));
+        doThrow(new javax.net.ssl.SSLHandshakeException("DO-NOT-LEAK")).when(s).send(any());error=assertThrows(ApiError.class,()->s.execute(req));assertTrue(error.getMessage().contains("TLS"));assertFalse(error.getMessage().contains("DO-NOT-LEAK"));
+    }
+    @Test void invalidOrUsedLoginCodeDoesNotInvalidateDeviceIdentity()throws Exception {
+        var s=spy(service());doReturn(json.readTree("{\"errcode\":40029,\"errmsg\":\"invalid code\"}")).when(s).execute(any());
+        var error=assertThrows(ApiError.class,()->s.login("test-code"));assertEquals(400,error.status);assertTrue(error.getMessage().contains("40029"));
+        doReturn(json.readTree("{\"errcode\":40125}")).when(s).execute(any());error=assertThrows(ApiError.class,()->s.login("test-code"));assertEquals(503,error.status);assertTrue(error.getMessage().contains("AppSecret"));
+    }
     @Test void signsExactSignDataAndSelectsEnvironmentKey()throws Exception {
         var s=service();assertTrue(s.enabled());
         var pay=s.parameters("DV123","monthly",990,new WechatVirtualPayment.Session("openid","session-secret"));
