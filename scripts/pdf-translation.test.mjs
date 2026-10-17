@@ -150,3 +150,20 @@ test('mindmap uses the existing workflow and exports PNG PDF XMind without submi
  assert.equal(p.calls.filter(v=>v.submit).length,1)
  assert.ok(p.calls.includes('/ai/status'))
 })
+
+
+test('PPT uses editable PPTX as its default and reuses generation for repeat exports',async()=>{
+ const p=page({initialMode:'ppt'})
+ await p.run()
+ assert.equal(p.calls.find(v=>v.submit).submit[0],'ppt')
+ assert.equal(p.exportFormat.value,'pptx')
+ assert.deepEqual(Array.from(p.exportFormats.value,f=>f.id),['pptx'])
+ const first=await p.exportReport('pptx'),second=await p.exportReport('pptx')
+ assert.equal(first,second)
+ assert.ok(first.name.endsWith('_演示.pptx'))
+ assert.equal(p.exports.length,1)
+ assert.equal(p.exports[0][2],'')
+ assert.equal(p.exports[0][3],'ppt')
+ assert.equal(p.calls.filter(v=>v.submit).length,1)
+ assert.ok(p.calls.includes('/ai/status'))
+})

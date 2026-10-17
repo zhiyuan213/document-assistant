@@ -159,7 +159,7 @@ export function saveFileToPhone(file, platform) {
 export async function exportAiReport(content, format, translationJobId = '', mode = '') {
  await visitor()
  const translated=Boolean(translationJobId)
- const url=baseURL+'/api/pdf/ai/'+(translated?'translations/'+encodeURIComponent(translationJobId)+'/file?format='+encodeURIComponent(format):'export'),header={Authorization:'Bearer '+uni.getStorageSync(tokenKey),'Content-Type':'application/json'},name=(translated?'PDF文档译文':mode==='mindmap'?'AI脑图':'AI总结报告')+'.'+format
+ const url=baseURL+'/api/pdf/ai/'+(translated?'translations/'+encodeURIComponent(translationJobId)+'/file?format='+encodeURIComponent(format):'export'),header={Authorization:'Bearer '+uni.getStorageSync(tokenKey),'Content-Type':'application/json'},name=(translated?'PDF文档译文':mode==='mindmap'?'AI脑图':mode==='ppt'?'AI演示文稿':'AI总结报告')+'.'+format
  // #ifdef H5
  const response=await fetch(url,{method:translated?'GET':'POST',headers:header,...(translated?{}:{body:JSON.stringify({content,format,mode})})})
  if(!response.ok){const detail=await response.json().catch(()=>({}));throw new Error(detail.message||'导出失败，请重试')}
