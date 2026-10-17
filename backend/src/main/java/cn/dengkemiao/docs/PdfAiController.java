@@ -33,7 +33,7 @@ public class PdfAiController {
     private final PdfTranslationJobs translationJobs;
     private final java.util.concurrent.Semaphore inspections=new java.util.concurrent.Semaphore(2);
     @Value("${PDF_AI_TEST_MODE:false}") private boolean testMode;
-    @Value("${PDF_AI_DAILY_REQUEST_LIMIT:50}") private int dailyLimit;
+    @Value("${PDF_AI_DAILY_REQUEST_LIMIT:100}") private int dailyLimit;
     @Value("${PDF_AI_MAX_PAGES:30}") private int maxPages;
     @Value("${PDF_AI_MAX_SCAN_PAGES:5}") private int maxScanPages;
     @Value("${PDF_AI_MAX_INPUT_CHARS:15000}") private int maxInputChars;
@@ -355,7 +355,7 @@ public class PdfAiController {
             var reserved = free ? null : this.credits.reserve(owner, credits);
             db.update("INSERT INTO pdf_ai_daily_usage(visitor_id,usage_date,request_count) VALUES (?,?,0) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)", owner, day);
             int dailyChanged = db.update("UPDATE pdf_ai_daily_usage SET request_count=request_count+1 WHERE visitor_id=? AND usage_date=? AND request_count<?", owner, day, boundedDailyLimit());
-            if (dailyChanged != 1) throw new ApiError(429, "今日 AI 最多处理50次，请明日再试");
+            if (dailyChanged != 1) throw new ApiError(429, "今日 AI 最多处理100次，请明日再试");
             db.update("INSERT INTO pdf_ai_usage(visitor_id,usage_month,request_count,used_credits) VALUES (?,?,0,0) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)", owner, month);
             db.update("UPDATE pdf_ai_usage SET request_count=request_count+1,used_credits=used_credits+? WHERE visitor_id=? AND usage_month=?", reserved==null?0:reserved.credits(), owner, month);
             return reserved;
@@ -387,7 +387,7 @@ public class PdfAiController {
     private static LocalDate month() { return LocalDate.now(ZoneId.of("Asia/Shanghai")).withDayOfMonth(1); }
     private static LocalDate today() { return LocalDate.now(ZoneId.of("Asia/Shanghai")); }
     private long boundedMonthlyCredits() { return credits.monthlyCap(); }
-    private int boundedDailyLimit() { return Math.min(50, Math.max(0, dailyLimit)); }
+    private int boundedDailyLimit() { return Math.min(100, Math.max(0, dailyLimit)); }
     private int boundedInputChars() { return Math.min(15000, Math.max(1000, maxInputChars)); }
     private int boundedOutputTokens() { return Math.min(1500, Math.max(256, maxOutputTokens)); }
     private int todayUsed(String owner) {

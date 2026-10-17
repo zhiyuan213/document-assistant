@@ -158,12 +158,14 @@ class PdfAiCreditsTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.canRun").value(true));
         assertEquals(20000,credits.snapshot(id).topup());
         verify(model,never()).complete(anyString(),anyString(),anyInt(),anyBoolean());
+        db.update("INSERT INTO pdf_ai_daily_usage(visitor_id,usage_date,request_count) VALUES (?,?,99)",id,PdfAiCredits.now().toLocalDate());
+        mvc.perform(get("/api/pdf/ai/status").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.dailyLimit").value(100)).andExpect(jsonPath("$.dailyRemaining").value(1));
         mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","summary").header("Authorization","Bearer "+token))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.usedTokenCredits").value(200))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.dailyRemaining").value(0)).andExpect(jsonPath("$.usedTokenCredits").value(200))
                 .andExpect(jsonPath("$.inputTokens").value(100)).andExpect(jsonPath("$.outputTokens").value(25))
                 .andExpect(jsonPath("$.monthlyChargedCredits").value(0)).andExpect(jsonPath("$.topupChargedCredits").value(200));
         assertEquals(19800,credits.snapshot(id).topup());assertFalse(credits.snapshot(id).vip());
-        db.update("UPDATE pdf_ai_daily_usage SET request_count=50 WHERE visitor_id=?",id);
+        db.update("UPDATE pdf_ai_daily_usage SET request_count=100 WHERE visitor_id=?",id);
         mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","summary").header("Authorization","Bearer "+token))
                 .andExpect(status().isTooManyRequests());
         assertEquals(19800,credits.snapshot(id).topup());
@@ -250,7 +252,7 @@ class PdfAiCreditsTest {
             var usage=db.queryForMap("SELECT input_tokens,output_tokens,used_credits FROM pdf_ai_usage WHERE visitor_id=?",id);
             assertEquals(200,((Number)usage.get("input_tokens")).intValue());assertEquals(50,((Number)usage.get("output_tokens")).intValue());
             assertEquals(0,((Number)usage.get("used_credits")).intValue());
-            db.update("UPDATE pdf_ai_daily_usage SET request_count=50 WHERE visitor_id=?",id);
+            db.update("UPDATE pdf_ai_daily_usage SET request_count=100 WHERE visitor_id=?",id);
             mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","summary").header("Authorization",auth)).andExpect(status().isTooManyRequests());
             when(model.enabled()).thenReturn(false);
             mvc.perform(multipart("/api/pdf/ai/estimate").file(file).param("mode","summary").header("Authorization",auth)).andExpect(status().isServiceUnavailable());

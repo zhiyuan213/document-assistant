@@ -10,7 +10,7 @@
    <view :class="['package',{selected:selectedPackage==='ai-topup'}]" @click="selectedPackage='ai-topup'"><view class="package-top"><view class="package-name">AI 加油包<text>适合临时加量</text></view><view class="package-price"><text>¥</text>9.90<text>/ 包</text></view></view><view class="package-bottom"><view>增加 2,000,000 加权额度<text>长期有效，可叠加，会员到期后仍可使用</text></view><view class="package-check">{{selectedPackage==='ai-topup'?'✓':''}}</view></view></view>
    <PdfAiBilling />
    <button class="ui-button" :disabled="!billingEnabled || !paymentEnabled || purchasing || aiStatus.testMode" :loading="purchasing" @click="buy(selectedPackage)">{{purchasing?(pendingOrder?'正在确认支付结果…':'正在发起支付…'):aiStatus.testMode?'测试模式 · 无需购买':billingEnabled && paymentEnabled?(pendingOrder?'查询支付结果':'微信支付 ¥'+(selectedPackage==='monthly'?monthlyPrice:'9.90')):'购买暂未开放'}}</button>
-   <view class="purchase-note">主动购买 · 不自动续费 · 不自动扣款</view><view class="ui-caption limits">每个账号每日最多 50 次。单次最多 30 页、15,000 个文字字符；扫描件最多 5 页。</view>
+   <view class="purchase-note">主动购买 · 不自动续费 · 不自动扣款</view><view class="ui-caption limits">每个账号每日最多 100 次。单次最多 30 页、15,000 个文字字符；扫描件最多 5 页。</view>
   </template>
   <view v-else class="ui-notice">{{billingError || '正在获取额度信息…'}}</view>
   <view v-if="pendingOrder" class="ui-notice">有一笔购买结果待确认，请先查询，避免重复付款。<button class="ui-button ui-button-secondary" :disabled="purchasing" @click="checkPending">查询支付结果</button></view>

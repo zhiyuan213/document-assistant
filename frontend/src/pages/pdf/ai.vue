@@ -51,7 +51,7 @@ const preparedFiles=new Map()
 let exportGeneration=0
 watch(answer,()=>{exportGeneration++;preparedFiles.clear();exportFile.value=null;exportFormat.value=pdfUnavailable.value?'docx':'pdf';if(answer.value&&miniProgram)exportReport(exportFormat.value)})
 const statusLoaded=ref(false),statusError=ref('')
-const status=ref({enabled:false,vip:false,testMode:false,canUse:false,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0,dailyLimit:50,dailyRemaining:0,monthlyTokenCredits:2000000,usedTokenCredits:0,remainingTokenCredits:0})
+const status=ref({enabled:false,vip:false,testMode:false,canUse:false,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0,dailyLimit:100,dailyRemaining:0,monthlyTokenCredits:2000000,usedTokenCredits:0,remainingTokenCredits:0})
 const current=computed(()=>modes.find(x=>x.id===mode.value)||modes[0])
 let miniProgram=false
 // #ifdef MP-WEIXIN
