@@ -33,6 +33,13 @@
       }
     },
     {
+      "path": "pages/pdf/orders",
+      "style": {
+        "navigationBarTitleText": "购买记录",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/pdf/ai",
       "style": {
         "navigationBarTitleText": "AI 读 PDF",

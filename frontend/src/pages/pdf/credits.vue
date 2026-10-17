@@ -12,6 +12,7 @@
   </template>
   <view v-else class="ui-notice">{{billingError || '正在获取额度信息…'}}</view>
   <view v-if="pendingOrder" class="ui-notice">有一笔购买结果待确认，请先查询，避免重复付款。<button class="ui-button ui-button-secondary" :disabled="purchasing" @click="checkPending">查询支付结果</button></view>
+  <button class="ui-button ui-button-secondary order-link" @click="openOrders">购买记录 ›</button>
   <PdfAiBilling />
  </view>
 </template>
@@ -37,6 +38,8 @@ async function refresh(){billingError.value='';try{let state=await pdfRequest('/
   if(miniProgram&&state.wechatLoginEnabled){try{await pdfRequest('/login','POST',{code:await login()});state=await pdfRequest('/quota')}catch{}}
   aiStatus.value=await pdfRequest('/ai/status');membership.value=state.membership;if(activeMember.value&&selectedPackage.value==='monthly')selectedPackage.value='ai-topup';monthlyPrice.value=(Number(state.monthlyPriceFen||990)/100).toFixed(2);billingError.value=''
  }catch(e){billingError.value=e.message;billingEnabled.value=null;membership.value=null;paymentEnabled.value=false}}
+function openOrders(){uni.navigateTo({url:'/pages/pdf/orders'})}
+function returnToAi(){uni.switchTab({url:'/pages/pdf/ai',success:()=>uni.showToast({title:'充值成功，额度已到账',icon:'none'})})}
 function expiryText(value){return value?value.slice(0,16).replace('T',' '):''}
 function login(){return new Promise((resolve,reject)=>wx.login({success:r=>r.code?resolve(r.code):reject(new Error('微信身份校验失败，请重试')),fail:()=>reject(new Error('微信登录失败，请重试'))}))}
 function storePending(order){pendingOrder.value=order;if(order)uni.setStorageSync(pendingKey,order);else uni.removeStorageSync(pendingKey)}
@@ -45,7 +48,7 @@ async function pollPurchase(order){
  return {paid:false,status:'pending'}
 }
 async function checkPending(){if(!pendingOrder.value||purchasing.value)return;purchasing.value=true
- try{const result=await pollPurchase(pendingOrder.value);await refresh();uni.showModal({title:result.paid?'购买成功':'支付结果',content:result.paid?'AI 额度已到账。':result.status==='pending'?'微信正在确认支付结果，请稍后再次查询。':'订单已关闭或退款，请核对微信账单。',showCancel:false})}catch(e){uni.showModal({title:'暂未确认支付',content:'网络暂不可用，请稍后查询，避免重复付款。',showCancel:false})}finally{purchasing.value=false}}
+ try{const result=await pollPurchase(pendingOrder.value);await refresh();if(result.paid){returnToAi();return}uni.showModal({title:'支付结果',content:result.status==='pending'?'微信正在确认支付结果，请稍后再次查询。':'订单已关闭或退款，请核对微信账单。',showCancel:false})}catch(e){uni.showModal({title:'暂未确认支付',content:'网络暂不可用，请稍后查询，避免重复付款。',showCancel:false})}finally{purchasing.value=false}}
 async function buy(packageId){if(purchasing.value||!billingEnabled.value||!paymentEnabled.value||aiStatus.value.testMode)return;if(pendingOrder.value){checkPending();return}if(packageId==='monthly'&&activeMember.value)return;purchasing.value=true
  try{
   if(paymentProvider.value==='virtual' && typeof wx.requestVirtualPayment!=='function')throw new Error('当前微信版本不支持虚拟支付，请更新微信后重试')
@@ -58,10 +61,12 @@ async function buy(packageId){if(purchasing.value||!billingEnabled.value||!payme
    // A cashier error or missing callback is not proof of non-payment. Query the saved order below.
   }
   const state=await pollPurchase(pendingOrder.value);await refresh()
-  uni.showModal({title:state.paid?'购买成功':'正在确认支付',content:state.paid?(packageId==='ai-topup'?'100 万加油包额度已到账，可继续使用 AI。':'月卡会员已开通。'):['refunded','closed','failed'].includes(state.status)?'订单已关闭或退款，请核对微信账单。':'支付结果正在由微信确认，请稍后查询订单查看额度。',showCancel:false})
+  if(state.paid){returnToAi();return}
+  uni.showModal({title:'正在确认支付',content:['refunded','closed','failed'].includes(state.status)?'订单已关闭或退款，请核对微信账单。':'支付结果正在由微信确认，请稍后查询订单查看额度。',showCancel:false})
  }catch(e){uni.showModal({title:pendingOrder.value?'支付结果待确认':'无法完成购买',content:e.message||'请稍后重试',showCancel:false})}finally{purchasing.value=false}}
 </script>
 <style scoped>
+.order-link{margin-top:24rpx}
 .package.blocked{opacity:.55;background:#f3f5f9}
 .refresh-link{display:block;color:#246bfd;min-height:64rpx;line-height:64rpx}
 

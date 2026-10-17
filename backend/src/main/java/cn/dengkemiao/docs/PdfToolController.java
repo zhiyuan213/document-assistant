@@ -125,6 +125,17 @@ public class PdfToolController {
         });
         var pay=wechatPay.createMiniProgramOrder(tradeNo,openids.get(0),amount,topup?"登科喵 AI 加油包（100万额度）":"登科喵 AI 月卡");var result=new HashMap<String,Object>(pay);result.put("orderId",orderId);result.put("paymentProvider","wechat");return result;
     }
+    @GetMapping("/purchases") public Map<String,Object> purchases(@RequestHeader(value="Authorization",required=false)String header,@RequestParam(defaultValue="1")int page){
+        String owner=aiCredits.owner(visitor(header));
+        if(page<1||page>5000)throw new ApiError(400,"订单页码无效");
+        var rows=db.queryForList("SELECT p.id,p.package_id,p.amount_fen,p.status,p.out_trade_no,p.created_at,p.paid_at,COALESCE(v.refunded_fen,0) AS refunded_fen FROM pdf_purchase p LEFT JOIN pdf_virtual_order v ON v.purchase_id=p.id WHERE p.visitor_id=? ORDER BY p.created_at DESC,p.id DESC LIMIT 21 OFFSET ?",owner,(page-1)*20);
+        var items=new ArrayList<Map<String,Object>>();
+        for(var row:rows.stream().limit(20).toList()){
+            var item=new LinkedHashMap<String,Object>();item.put("id",row.get("id"));item.put("packageId",row.get("package_id"));item.put("amountFen",row.get("amount_fen"));item.put("status",row.get("status"));item.put("orderNo",row.get("out_trade_no"));
+            item.put("createdAt",JdbcDates.local(row.get("created_at")).toString());item.put("paidAt",row.get("paid_at")==null?"":JdbcDates.local(row.get("paid_at")).toString());item.put("refundedFen",row.get("refunded_fen"));items.add(item);
+        }
+        return Map.of("items",items,"hasMore",rows.size()>20,"page",page);
+    }
     @GetMapping("/purchase/{id}") public Map<String,Object> purchaseState(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header){
         String owner=aiCredits.owner(visitor(header));var rows=db.queryForList("SELECT status,paid_at FROM pdf_purchase WHERE id=? AND visitor_id=?",id,owner);
         if(rows.isEmpty())throw new ApiError(404,"订单不存在");if(virtualPayments.isVirtual(id)){virtualPayments.refresh(id);rows=db.queryForList("SELECT status,paid_at FROM pdf_purchase WHERE id=? AND visitor_id=?",id,owner);}

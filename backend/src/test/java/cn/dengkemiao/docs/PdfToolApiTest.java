@@ -11,6 +11,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.UUID;
+import java.util.HexFormat;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -91,6 +94,25 @@ class PdfToolApiTest {
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM pdf_ai_usage WHERE visitor_id=?",Integer.class,owner));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM pdf_daily_quota WHERE visitor_id=?",Integer.class,owner));
         assertTrue(db.queryForObject("SELECT TIMESTAMPDIFF(SECOND,CURRENT_TIMESTAMP,expires_at) FROM pdf_tool_job WHERE id=?",Integer.class,id)>1700);
+    }
+    @Test void orderHistoryIsPagedNewestFirstAndIsolatedByOwner()throws Exception {
+        String a=token(),b=token();String hash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(a.substring(7).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String owner=db.queryForObject("SELECT id FROM pdf_visitor WHERE token_hash=?",String.class,hash);var ids=new ArrayList<String>();
+        for(int i=0;i<22;i++){
+            String id=UUID.randomUUID().toString();ids.add(id);String trade="DK"+UUID.randomUUID().toString().replace("-","").substring(0,30);
+            db.update("INSERT INTO pdf_purchase(id,visitor_id,package_id,amount_fen,credits,status,out_trade_no,created_at,paid_at) VALUES (?,?,?,?,?,?,?,?,?)",id,owner,i%2==0?"monthly":"ai-topup",990,1,i%2==0?"paid":"pending",trade,Timestamp.valueOf(java.time.LocalDateTime.now().minusMinutes(i)),i%2==0?Timestamp.valueOf(java.time.LocalDateTime.now()):null);
+        }
+        var first=json.readTree(mvc.perform(get("/api/pdf/purchases").header("Authorization",a)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertEquals(20,first.path("items").size());assertTrue(first.path("hasMore").asBoolean());assertEquals(ids.getFirst(),first.path("items").get(0).path("id").asText());
+        assertEquals(990,first.path("items").get(0).path("amountFen").asInt());assertFalse(first.path("items").get(0).has("visitor_id"));assertFalse(first.path("items").get(0).path("paidAt").asText().isEmpty());
+        var last=json.readTree(mvc.perform(get("/api/pdf/purchases?page=2").header("Authorization",a)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());assertEquals(2,last.path("items").size());assertFalse(last.path("hasMore").asBoolean());assertEquals(ids.get(20),last.path("items").get(0).path("id").asText());
+        mvc.perform(get("/api/pdf/purchases").header("Authorization",b)).andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
+        mvc.perform(get("/api/pdf/purchase/"+ids.getFirst()).header("Authorization",b)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/pdf/purchases?page=0").header("Authorization",a)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/pdf/purchases")).andExpect(status().isUnauthorized());
+        String shared="orders-shared-"+UUID.randomUUID();db.update("UPDATE pdf_visitor SET wechat_openid=? WHERE id=?",shared,owner);
+        String otherHash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(b.substring(7).getBytes(java.nio.charset.StandardCharsets.UTF_8)));db.update("UPDATE pdf_visitor SET wechat_openid=? WHERE token_hash=?",shared,otherHash);db.update("INSERT INTO pdf_ai_account(wechat_openid,visitor_id) VALUES (?,?)",shared,owner);
+        mvc.perform(get("/api/pdf/purchases").header("Authorization",b)).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].id").value(ids.getFirst()));
     }
     @Test void anonymousProcessingOwnsResultsAndBasicToolsStayFree()throws Exception{
         String a=token(),b=token();byte[] source=new PdfService().images(List.of(PdfServiceTest.image()),false,false);String id=start(a,"compress",source);waitJob(id,a,"completed");
