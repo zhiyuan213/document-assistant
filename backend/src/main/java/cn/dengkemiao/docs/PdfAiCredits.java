@@ -16,6 +16,8 @@ public class PdfAiCredits {
     private final JdbcTemplate db;
     private final TransactionTemplate tx;
     @Value("${PDF_AI_MONTHLY_TOKEN_CREDITS:2000000}") private long monthlyCredits;
+    @Value("${PDF_AI_DAILY_FREE_CREDITS:5000}") private long dailyFreeCredits;
+    public long dailyFreeCap() { return Math.min(5000L, Math.max(0, dailyFreeCredits)); }
     public PdfAiCredits(JdbcTemplate db, PlatformTransactionManager manager) {
         this.db = db; this.tx = new TransactionTemplate(manager);
     }
@@ -57,29 +59,43 @@ public class PdfAiCredits {
         }
         db.update("UPDATE pdf_ai_wallet SET period_end=?,monthly_used=? WHERE visitor_id=?", end == null ? null : Timestamp.valueOf(end), used, owner);
         long topup = ((Number) row.get("topup_balance")).longValue();
-        return new Snapshot(vip, vip ? Math.max(0, monthlyCap()-used) : 0, topup, end);
+        LocalDate day = now().toLocalDate();
+        long free = 0;
+        if (dailyFreeCap() > 0) {
+            db.update("INSERT INTO pdf_ai_daily_free(visitor_id,credit_date,used_credits) VALUES (?,?,0) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)",owner,day);
+            db.update("UPDATE pdf_ai_daily_free SET used_credits=CASE WHEN credit_date=? THEN used_credits ELSE 0 END,credit_date=? WHERE visitor_id=?",day,day,owner);
+            Long freeUsed = db.queryForObject("SELECT used_credits FROM pdf_ai_daily_free WHERE visitor_id=?",Long.class,owner);
+            free = Math.max(0,dailyFreeCap()-freeUsed);
+        }
+        return new Snapshot(vip, vip ? Math.max(0, monthlyCap()-used) : 0, topup, end, free, day);
     }
     public Reservation reserve(String owner, long credits) {
         return tx.execute(s -> {
             Snapshot balance = load(owner);
             if (credits <= 0 || balance.total() <= 0) throw new ApiError(402, "AI 额度不足，请购买加油包后继续");
             long amount = Math.min(credits, balance.total());
-            long monthly = Math.min(balance.monthly(), amount), topup = amount-monthly;
+            long free = Math.min(balance.free(),amount);
+            long monthly = Math.min(balance.monthly(), amount-free), topup = amount-free-monthly;
+            if (free > 0) db.update("UPDATE pdf_ai_daily_free SET used_credits=used_credits+? WHERE visitor_id=? AND credit_date=?",free,owner,balance.freeDay());
             db.update("UPDATE pdf_ai_wallet SET monthly_used=monthly_used+?,topup_balance=topup_balance-? WHERE visitor_id=?", monthly, topup, owner);
-            return new Reservation(amount, monthly, topup, balance.periodEnd());
+            return new Reservation(amount, monthly, topup, balance.periodEnd(),free,balance.freeDay());
         });
     }
     public Reservation settle(String owner, Reservation reservation, long actual) {
         return tx.execute(s -> {
             Snapshot balance = load(owner);
             boolean samePeriod = Objects.equals(balance.periodEnd(), reservation.periodEnd());
-            long monthlyActual = Math.min(Math.max(0, actual), reservation.monthly()+(samePeriod ? balance.monthly() : 0));
-            long topupActual = Math.min(Math.max(0, actual-monthlyActual), reservation.topup()+Math.max(0,balance.topup()));
+            boolean sameDay = Objects.equals(balance.freeDay(),reservation.freeDay());
+            long freeActual = Math.min(Math.max(0,actual),reservation.free()+(sameDay ? balance.free() : 0));
+            long monthlyActual = Math.min(Math.max(0, actual-freeActual), reservation.monthly()+(samePeriod ? balance.monthly() : 0));
+            long topupActual = Math.min(Math.max(0, actual-freeActual-monthlyActual), reservation.topup()+Math.max(0,balance.topup()));
+            // A late settlement must not consume or replenish the next day's free allowance.
+            if (sameDay && dailyFreeCap()>0) db.update("UPDATE pdf_ai_daily_free SET used_credits=GREATEST(0,used_credits+?) WHERE visitor_id=? AND credit_date=?",freeActual-reservation.free(),owner,reservation.freeDay());
             // A response arriving after the period ends must not restore expired monthly credits.
             long monthlyRefund = Objects.equals(balance.periodEnd(), reservation.periodEnd()) ? reservation.monthly()-monthlyActual : 0;
             db.update("UPDATE pdf_ai_wallet SET monthly_used=GREATEST(0,monthly_used-?),topup_balance=GREATEST(0,topup_balance+?) WHERE visitor_id=?",
                     monthlyRefund, reservation.topup()-topupActual, owner);
-            return new Reservation(monthlyActual+topupActual,monthlyActual,topupActual,reservation.periodEnd());
+            return new Reservation(freeActual+monthlyActual+topupActual,monthlyActual,topupActual,reservation.periodEnd(),freeActual,reservation.freeDay());
         });
     }
     public void grantTopup(String owner, long amount) {
@@ -94,8 +110,8 @@ public class PdfAiCredits {
             if (!renewing) db.update("UPDATE pdf_ai_wallet SET period_end=?,monthly_used=0 WHERE visitor_id=?", Timestamp.valueOf(expires), owner);
         });
     }
-    public record Snapshot(boolean vip, long monthly, long topup, LocalDateTime periodEnd) {
-        public long total() { return Math.max(0, monthly+topup); }
+    public record Snapshot(boolean vip, long monthly, long topup, LocalDateTime periodEnd, long free, LocalDate freeDay) {
+        public long total() { return free + Math.max(0, monthly+topup); }
     }
-    public record Reservation(long credits, long monthly, long topup, LocalDateTime periodEnd) {}
+    public record Reservation(long credits, long monthly, long topup, LocalDateTime periodEnd, long free, LocalDate freeDay) {}
 }

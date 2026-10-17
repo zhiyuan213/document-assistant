@@ -8,7 +8,7 @@
   <view v-else-if="!statusLoaded" class="ui-notice">正在检查 AI 服务…</view>
   <view v-else-if="!status.enabled" class="ui-notice">AI 服务配置尚未生效，请联系管理员检查后端配置。</view>
   <view v-else-if="!status.canUse" class="ui-notice">额度不足，开通月卡或购买加油包后即可使用。<text class="notice-link" @click="openCredits">查看方案 ›</text></view>
-  <view v-else class="quota-card"><view><text>会员月额度</text><view>{{formatCredits(status.monthlyRemainingTokenCredits)}}</view></view><view><text>加油包额度</text><view>{{formatCredits(status.topupRemainingTokenCredits)}}</view></view><text class="quota-foot">今日还可处理 {{status.dailyRemaining}} 次{{status.testMode?' · 测试模式免费体验':''}}</text></view>
+  <view v-else class="quota-card"><view><text>今日免费额度</text><view>{{formatCredits(status.freeRemainingTokenCredits)}}</view></view><view><text>会员月额度</text><view>{{formatCredits(status.monthlyRemainingTokenCredits)}}</view></view><view><text>加油包额度</text><view>{{formatCredits(status.topupRemainingTokenCredits)}}</view></view><text class="quota-foot">今日还可处理 {{status.dailyRemaining}} 次{{status.testMode?' · 测试模式免费体验':''}}</text></view>
   <view class="ui-section-title">01 <text class="step-name">选择 AI 功能</text></view>
   <view class="ui-tool-grid"><PdfToolTile v-for="(item,index) in modes" :key="item.id" :label="modeLabels[index]" :color="modeColors[index]" :title="item.title" :caption="item.brief" :selected="mode===item.id" :disabled="busy || translationPending" @click="selectMode(item.id)"/></view>
   <view class="ui-section-title">02 <text class="step-name">添加 PDF 文件</text></view>
@@ -51,7 +51,7 @@ const preparedFiles=new Map()
 let exportGeneration=0
 watch(answer,()=>{exportGeneration++;preparedFiles.clear();exportFile.value=null;exportFormat.value=pdfUnavailable.value?'docx':'pdf';if(answer.value&&miniProgram)exportReport(exportFormat.value)})
 const statusLoaded=ref(false),statusError=ref('')
-const status=ref({enabled:false,vip:false,testMode:false,canUse:false,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0,dailyLimit:100,dailyRemaining:0,monthlyTokenCredits:2000000,usedTokenCredits:0,remainingTokenCredits:0})
+const status=ref({enabled:false,vip:false,testMode:false,canUse:false,freeRemainingTokenCredits:0,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0,dailyLimit:100,dailyRemaining:0,monthlyTokenCredits:2000000,usedTokenCredits:0,remainingTokenCredits:0})
 const current=computed(()=>modes.find(x=>x.id===mode.value)||modes[0])
 let miniProgram=false
 // #ifdef MP-WEIXIN

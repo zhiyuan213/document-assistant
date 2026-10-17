@@ -18,7 +18,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(properties={"spring.datasource.url=jdbc:h2:mem:virtual-pay;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","spring.datasource.username=sa","spring.datasource.password=","PDF_BILLING_ENABLED=true","PDF_PAYMENT_PROVIDER=virtual"})
+@SpringBootTest(properties={"PDF_AI_DAILY_FREE_CREDITS=0","spring.datasource.url=jdbc:h2:mem:virtual-pay;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","spring.datasource.username=sa","spring.datasource.password=","PDF_BILLING_ENABLED=true","PDF_PAYMENT_PROVIDER=virtual"})
 @AutoConfigureMockMvc
 class PdfVirtualPaymentsTest {
     @Autowired MockMvc mvc;@Autowired ObjectMapper json;@Autowired JdbcTemplate db;@Autowired PdfAiCredits credits;@Autowired PdfVirtualPayments payments;

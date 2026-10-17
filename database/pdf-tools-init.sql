@@ -89,3 +89,10 @@ CREATE TABLE IF NOT EXISTS pdf_translation_job (
  UNIQUE KEY uq_pdf_translation_request(visitor_id,client_request_id),
  FOREIGN KEY(visitor_id) REFERENCES pdf_visitor(id)
 );
+
+CREATE TABLE IF NOT EXISTS pdf_ai_daily_free (
+ visitor_id CHAR(36) PRIMARY KEY,
+ credit_date DATE NOT NULL,
+ used_credits BIGINT NOT NULL DEFAULT 0,
+ FOREIGN KEY(visitor_id) REFERENCES pdf_visitor(id)
+);

@@ -50,6 +50,7 @@ public class PdfAiController {
         long used = rows.isEmpty() ? 0 : ((Number) rows.get(0).get("used_credits")).longValue();
         int today = todayUsed(owner), dailyCap=boundedDailyLimit(); long monthlyCap=boundedMonthlyCredits();
         var result = new HashMap<String,Object>();
+        result.put("freeRemainingTokenCredits",balance.free()); result.put("dailyFreeTokenCredits",credits.dailyFreeCap());
         result.put("monthlyRemainingTokenCredits", balance.monthly()); result.put("topupRemainingTokenCredits", Math.max(0,balance.topup()));
         result.put("testMode",testMode); result.put("canUse", testMode || balance.total()>0); result.put("periodEndsAt", balance.periodEnd()==null ? "" : balance.periodEnd().toString()+"+08:00");
         result.putAll(Map.of("enabled", deepseek.enabled(), "vip", vip, "monthlyTokenCredits", monthlyCap,
@@ -141,12 +142,14 @@ public class PdfAiController {
                     catch (Exception e) { throw new ApiError(502, "AI 信息提取格式异常，请重试"); }
                 }
             }
-        return Map.of("answer", answer, "remainingTokenCredits", remainingCredits(owner), "usedTokenCredits", chargedCredits,
+        var response = new HashMap<String,Object>(Map.of("answer", answer, "remainingTokenCredits", remainingCredits(owner), "usedTokenCredits", chargedCredits,
                 "dailyRemaining", Math.max(0, boundedDailyLimit()-todayUsed(owner)),
                 "inputTokens",modelResult.inputTokens(),"outputTokens",modelResult.outputTokens(),
                 "monthlyChargedCredits",reservation.allocation==null?0L:reservation.settled.monthly(),
                 "topupChargedCredits",reservation.allocation==null?0L:reservation.settled.topup(),
-                "testMode",reservation.allocation==null,"actualTokenCredits",Math.max(0L,modelResult.inputTokens())+4L*Math.max(0L,modelResult.outputTokens()));
+                "testMode",reservation.allocation==null,"actualTokenCredits",Math.max(0L,modelResult.inputTokens())+4L*Math.max(0L,modelResult.outputTokens())));
+        response.put("freeChargedCredits",reservation.allocation==null?0L:reservation.settled.free());
+        return response;
         } catch (Exception e) {
             if (!apiAttempted && reservation != null) refund(owner, reservation);
             if (e instanceof ApiError api) throw api;
@@ -195,6 +198,7 @@ public class PdfAiController {
                 response.put("testMode",reservation.allocation==null);response.put("actualTokenCredits",usage[0]+4*usage[1]);
                 response.put("monthlyChargedCredits",reservation.allocation==null?0L:reservation.settled.monthly());
                 response.put("topupChargedCredits",reservation.allocation==null?0L:reservation.settled.topup());
+                response.put("freeChargedCredits",reservation.allocation==null?0L:reservation.settled.free());
                 response.put("pages",plan.pages().size());
                 response.put("pdfAvailable",result.pdf()!=null);
                 response.put("targetLanguage",language);

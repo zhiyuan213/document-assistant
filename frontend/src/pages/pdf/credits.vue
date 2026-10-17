@@ -1,7 +1,7 @@
 <template>
  <view class="pdf-screen credits">
   <view class="ui-heading">我的 AI 额度</view><view class="ui-subtitle">按需使用，让每一份文档更有价值。</view>
-  <view class="balance-card ui-card"><view class="balance-heading"><text>{{membership?.active?'AI 月卡生效中':'当前可用额度'}}</text><text v-if="membership?.active" class="member-tag">月卡会员</text></view><view class="balances"><view><text>会员月额度</text><view>{{formatCredits(aiStatus.monthlyRemainingTokenCredits)}}</view></view><view><text>加油包额度</text><view>{{formatCredits(aiStatus.topupRemainingTokenCredits)}}</view></view></view><view v-if="membership?.active" class="balance-foot">月卡有效至 {{expiryText(membership.expiresAt)}}（北京时间）</view><view v-else class="balance-foot">加油包长期有效，会员到期后仍可使用。</view></view>
+  <view class="balance-card ui-card"><view class="balance-heading"><text>{{membership?.active?'AI 月卡生效中':'当前可用额度'}}</text><text v-if="membership?.active" class="member-tag">月卡会员</text></view><view class="balances"><view><text>今日免费额度</text><view>{{formatCredits(aiStatus.freeRemainingTokenCredits)}}</view></view><view><text>会员月额度</text><view>{{formatCredits(aiStatus.monthlyRemainingTokenCredits)}}</view></view><view><text>加油包额度</text><view>{{formatCredits(aiStatus.topupRemainingTokenCredits)}}</view></view></view><view v-if="membership?.active" class="balance-foot">月卡有效至 {{expiryText(membership.expiresAt)}}（北京时间）</view><view v-else class="balance-foot">加油包长期有效，会员到期后仍可使用。</view></view>
   <view v-if="aiStatus.testMode" class="ui-notice">测试模式已开启，无需购买即可使用 AI，不扣用户额度。</view>
   <view v-if="billingEnabled!==null && paymentUnavailableReason" class="ui-notice">{{paymentUnavailableReason}}<text class="refresh-link" @click="refresh">刷新购买状态 ›</text></view>
   <template v-if="billingEnabled!==null">
