@@ -99,7 +99,7 @@ public class WechatVirtualPayment {
     }
     private synchronized void invalidate(String old){if(accessToken.equals(old))tokenExpiry=Instant.EPOCH;}
     private JsonNode get(String path){return execute(HttpRequest.newBuilder(URI.create("https://api.weixin.qq.com"+path)).timeout(Duration.ofSeconds(12)).GET().build());}
-    private synchronized HttpClient client(){if(client==null)client=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();return client;}
+    private synchronized HttpClient client(){if(client==null)client=HttpClient.newBuilder().sslContext(WechatTls.context()).connectTimeout(Duration.ofSeconds(5)).build();return client;}
     // Keep URLs, response bodies and exception messages out of logs: they may contain credentials.
     JsonNode execute(HttpRequest request){
         String path=request.uri().getPath(),stage=stage(path);
