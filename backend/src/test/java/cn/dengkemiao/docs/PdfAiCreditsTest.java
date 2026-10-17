@@ -194,6 +194,22 @@ class PdfAiCreditsTest {
         assertEquals(150,charged.credits());assertEquals(100,charged.monthly());assertEquals(50,charged.topup());
         assertEquals(0,credits.snapshot(id).total());
     }
+    @Test void oldCompletedWordOnlyTaskCanExportPdfWithoutAnotherModelCallOrDebit() throws Exception {
+        String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();
+        String hash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String owner=db.queryForObject("SELECT id FROM pdf_visitor WHERE token_hash=?",String.class,hash),id=UUID.randomUUID().toString();
+        credits.grantTopup(owner,100);
+        db.update("INSERT INTO pdf_translation_job(id,visitor_id,client_request_id,status,progress,worker_id,result_json,expires_at) VALUES (?,?,?,'completed',100,?,?,?)",id,owner,UUID.randomUUID().toString(),UUID.randomUUID().toString(),json.writeValueAsString(Map.of("answer","Existing translated text. ".repeat(600),"pdfAvailable",false)),Timestamp.valueOf(PdfAiCredits.now().plusMinutes(20)));
+        var expires=db.queryForObject("SELECT expires_at FROM pdf_translation_job WHERE id=?",Timestamp.class,id);
+        mvc.perform(get("/api/pdf/ai/translations/"+id).header("Authorization","Bearer "+token)).andExpect(jsonPath("$.pdfAvailable").value(true));
+        byte[] first=mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format","pdf").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        try(var doc=org.apache.pdfbox.Loader.loadPDF(first)){assertTrue(doc.getNumberOfPages()>1);assertEquals(600,new org.apache.pdfbox.text.PDFTextStripper().getText(doc).replaceAll("\\s+"," ").split("Existing translated text\\.",-1).length-1);}
+        byte[] second=mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format","pdf").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        assertArrayEquals(first,second);assertEquals(100,credits.snapshot(owner).total());assertEquals(expires,db.queryForObject("SELECT expires_at FROM pdf_translation_job WHERE id=?",Timestamp.class,id));
+        verify(model,never()).complete(anyString(),anyString(),anyInt(),anyBoolean());
+        db.update("UPDATE pdf_translation_job SET expires_at=? WHERE id=?",Timestamp.valueOf(PdfAiCredits.now().minusMinutes(1)),id);
+        mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format","pdf").header("Authorization","Bearer "+token)).andExpect(status().isNotFound());
+    }
     private byte[] samplePdf() throws Exception {
         try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var out=new java.io.ByteArrayOutputStream()) {
             var page=new org.apache.pdfbox.pdmodel.PDPage();doc.addPage(page);

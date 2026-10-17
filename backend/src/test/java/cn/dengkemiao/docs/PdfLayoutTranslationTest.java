@@ -174,7 +174,7 @@ class PdfLayoutTranslationTest {
         var rotatedPlan=engine.inspect(rotated,30,5,15000);var translated=new HashMap<Integer,String>();rotatedPlan.regions().forEach(r->translated.put(r.id(),"English sentence."));
         try(var doc=Loader.loadPDF(engine.render(rotatedPlan,translated).pdf())){assertEquals(90,doc.getPage(0).getRotation());}
     }
-    @Test void layoutOverflowRetainsTheCompleteTextInsteadOfProvidingACorruptPdf()throws Exception {
+    @Test void layoutOverflowExportsCompletePaginatedPdfWithOriginalArtworkReference()throws Exception {
         var plan=engine.inspect(sample(),30,5,15000);
         var output=engine.translate(plan,"English","",(system,user,cap)->{
             try {
@@ -183,8 +183,23 @@ class PdfLayoutTranslationTest {
                 return new DeepSeekService.Result(json.writeValueAsString(Map.of("translations",rows)),100,1000);
             }catch(Exception e){throw new RuntimeException(e);}
         },p->{});
-        assertNull(output.pdf());assertTrue(output.text().contains("Long translated passage"));
-        assertTrue(output.warnings().stream().anyMatch(w->w.contains("Word")));
+        assertNotNull(output.pdf());assertFalse(output.layoutPreserved());assertTrue(output.text().contains("Long translated passage"));
+        try(var doc=Loader.loadPDF(output.pdf());var original=Loader.loadPDF(plan.input())){
+            assertTrue(doc.getNumberOfPages()>original.getNumberOfPages());
+            String text=new PDFTextStripper().getText(doc).replaceAll("\\s+"," ");assertEquals(200,text.split("Long translated passage",-1).length-1);
+            var last=doc.getPage(doc.getNumberOfPages()-1);assertTrue(last.getResources().getXObjectNames().iterator().hasNext());
+        }
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/translation-preview"));
+        java.nio.file.Files.write(java.nio.file.Path.of("target/translation-preview/reflow.pdf"),output.pdf());
+    }
+    @Test void japaneseReflowProducesVisiblePaginatedPdf()throws Exception {
+        byte[] bytes=engine.flowingPdf("[Page 1]\n"+"日本語の翻訳文です。内容を省略せず、改行して保存します。 ".repeat(300));
+        try(var doc=Loader.loadPDF(bytes)){
+            assertTrue(doc.getNumberOfPages()>1);
+            var bitmap=new PDFRenderer(doc).renderImage(0);int ink=0;
+            for(int y=20;y<bitmap.getHeight()-20;y++)for(int x=20;x<bitmap.getWidth()-20;x++)if((bitmap.getRGB(x,y)&0xffffff)<0xdddddd)ink++;
+            assertTrue(ink>1000);
+        }
     }
     @Test void ocrCoordinatesAndBackgroundReconstructionAreLocal() {
         var image=new BufferedImage(400,200,BufferedImage.TYPE_INT_RGB);var g=image.createGraphics();g.setColor(new Color(240,248,255));g.fillRect(0,0,400,200);g.setColor(Color.RED);g.fillRect(20,30,80,20);g.dispose();

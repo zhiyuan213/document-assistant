@@ -83,3 +83,7 @@ AI仅接受 summary、translate 两种模式。总结按文档概览、重点内
 估算和执行翻译均接收 targetLanguage：zh-CN、zh-TW、en、ja、ko、fr、de、es、pt、ru、ar、it。选项分别为简体中文、繁体中文、英语、日语、韩语、法语、德语、西班牙语、葡萄牙语、俄语、阿拉伯语、意大利语。源语言自动识别，输出文字译文，不承诺保留原PDF版式。达到模型输出上限会明确提示未完整生成，建议拆分后处理。
 
 基础去水印：POST /api/pdf/watermarks/inspect 检测候选；/watermarks/preview 根据 candidateIds 生成前后预览与短期凭证。常规 jobs 接口使用 remove-watermark、candidateIds、previewProof 生成新PDF，原文件不改动。候选可能是正文或装饰，需用户确认预览。当前凭证限单实例、10分钟有效。
+
+### 翻译 PDF 导出优先级
+
+优先保证完整译文可导出。先尝试保留原页版式；版面溢出等原因导致原版式不可用时，自动生成可换行、可新增页面的顺排译文 PDF，并附原页作为图片与图形参考。此过程复用已生成的译文，不再次调用 AI。保留期内旧版只存有译文的完成任务，也支持按需生成并缓存顺排 PDF，导出不扣额度、不增加每日次数、不延长 30 分钟有效期。

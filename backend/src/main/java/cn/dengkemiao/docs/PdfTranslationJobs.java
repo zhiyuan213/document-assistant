@@ -14,9 +14,10 @@ import org.springframework.stereotype.Service;
 public class PdfTranslationJobs {
     private final JdbcTemplate db;
     private final ObjectMapper json;
+    private final PdfLayoutTranslation translation;
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new SynchronousQueue<>());
     private final String worker=UUID.randomUUID().toString();
-    public PdfTranslationJobs(JdbcTemplate db,ObjectMapper json){this.db=db;this.json=json;}
+    public PdfTranslationJobs(JdbcTemplate db,ObjectMapper json,PdfLayoutTranslation translation){this.db=db;this.json=json;this.translation=translation;}
     @FunctionalInterface interface Work { Completed run(java.util.function.IntConsumer progress) throws Exception; }
     record Completed(byte[] pdf,byte[] word,Map<String,Object> result) {}
     Map<String,Object> existing(String owner,String requestId) {
@@ -51,15 +52,22 @@ public class PdfTranslationJobs {
         result.put("translationJobId",id);result.put("status",row.get("status"));result.put("progress",row.get("progress"));
         if(row.get("error_message")!=null)result.put("message",row.get("error_message"));
         if(row.get("result_json")!=null)result.putAll(json.readValue(row.get("result_json").toString(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){}));
+        if("completed".equals(result.get("status"))&&result.get("answer") instanceof String text&&!text.isBlank()) {
+            if(Boolean.FALSE.equals(result.get("pdfAvailable")))result.put("pdfLayoutPreserved",false);
+            result.put("pdfAvailable",true);result.remove("pdfUnavailableReason");
+        }
         return result;
     }
     ResponseEntity<byte[]> download(String owner,String id,String format)throws Exception {
         if(!Set.of("pdf","docx","txt").contains(format))throw new ApiError(400,"请选择PDF、Word或文本格式");
         var state=state(owner,id);if(!"completed".equals(state.get("status")))throw new ApiError(409,"翻译文件尚未完成");
-        if(format.equals("pdf")&&Boolean.FALSE.equals(state.get("pdfAvailable")))throw new ApiError(422,"本次未能保持原版式，未生成PDF；请下载文本或Word译文");
         byte[] bytes;
         if(format.equals("txt"))bytes=("\uFEFF"+state.get("answer")).getBytes(java.nio.charset.StandardCharsets.UTF_8);
         else bytes=db.queryForObject("SELECT "+(format.equals("pdf")?"pdf_data":"word_data")+" FROM pdf_translation_job WHERE id=? AND visitor_id=?",byte[].class,id,owner);
+        if(bytes==null&&format.equals("pdf")&&state.get("answer") instanceof String text&&!text.isBlank()) {
+            bytes=translation.flowingPdf(text);
+            if(db.update("UPDATE pdf_translation_job SET pdf_data=? WHERE id=? AND visitor_id=? AND expires_at>CURRENT_TIMESTAMP",bytes,id,owner)!=1)throw new ApiError(410,"文件已过期，请重新处理");
+        }
         if(bytes==null)throw new ApiError(410,"翻译文件已清理，请重新处理");
         String type=format.equals("pdf")?"application/pdf":format.equals("docx")?"application/vnd.openxmlformats-officedocument.wordprocessingml.document":"text/plain;charset=utf-8";
         return ResponseEntity.ok().contentType(MediaType.parseMediaType(type)).header("Content-Disposition","attachment; filename=\"translated-document."+format+"\"").body(bytes);

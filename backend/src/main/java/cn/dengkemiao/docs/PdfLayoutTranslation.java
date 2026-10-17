@@ -48,7 +48,7 @@ public class PdfLayoutTranslation {
         Page(float width,float height,boolean scanned,List<Line> lines){this(width,height,scanned,lines,List.of());}
     }
     record Plan(byte[] input,List<Page> pages,List<Region> regions,int characters,List<String> warnings) {}
-    record Output(byte[] pdf,String text,List<String> warnings) {}
+    record Output(byte[] pdf,String text,List<String> warnings,boolean layoutPreserved) {}
     @FunctionalInterface interface Translate { DeepSeekService.Result call(String system,String text,int ceiling); }
 
     Plan inspect(byte[] bytes,int pageCap,int scanCap,int charCap) throws Exception {
@@ -148,16 +148,59 @@ public class PdfLayoutTranslation {
             progress.accept(10+(i+1)*75/batches.size());
         }
         try { return render(plan,translated); }
-        catch(ApiError e) {
-            if(e.status!=422)throw e;
-            log.warn("Layout PDF unavailable: {}",e.getMessage());
+        catch(Exception e) {
+            log.warn("Layout PDF unavailable; exporting reflow PDF ({})",e.getClass().getSimpleName());
             var warnings=new ArrayList<>(plan.warnings);
-            warnings.add(e.getMessage()+"。本次保留完整文本和Word译文，不提供错版PDF，已调用部分按实际用量结算。");
+            warnings.add("原版式无法完整容纳译文，已自动换行分页导出完整PDF；原页附后供核对图片和图形。");
             var text=new StringBuilder();
             for(int i=0;i<plan.pages.size();i++){text.append("[Page ").append(i+1).append("]\n");for(var region:plan.regions)if(region.page==i)text.append(translated.get(region.id)).append("\n\n");}
-            return new Output(null,text.toString(),List.copyOf(warnings));
+            byte[] flowed=flowingPdf(text.toString());
+            try(var output=Loader.loadPDF(flowed);var original=Loader.loadPDF(plan.input);var bytes=new ByteArrayOutputStream()) {
+                // Keep every original image and graphic available for reference.
+                for(var page:original.getPages())output.importPage(page);
+                output.save(bytes);
+                return new Output(bytes.toByteArray(),text.toString(),List.copyOf(warnings),false);
+            }
         }
     }
+    /** Export existing validated text without calling the translation model again. */
+    byte[] flowingPdf(String content) throws Exception {
+        if(content==null||content.isBlank())throw new ApiError(400,"译文为空，无法导出PDF");
+        try(var doc=new PDDocument();var bytes=new ByteArrayOutputStream()) {
+            Map<String,PDFont> fonts=new HashMap<>();PDPageContentStream stream=null;float y=0;
+            try {
+                for(String paragraph:content.split("\\R",-1)) {
+                    if(paragraph.isBlank()){y-=8;continue;}
+                    String text=paragraph.replaceAll("[\\p{Cntrl}]"," ").strip();
+                    PDFont font=fallback(doc,text,false,fonts);
+                    boolean complex=text.codePoints().anyMatch(c->Set.of(Character.UnicodeScript.ARABIC,Character.UnicodeScript.HEBREW).contains(Character.UnicodeScript.of(c)));
+                    if(complex)font=null;
+                    final PDFont chosen=font;
+                    java.awt.Font outline=chosen==null?awtFont(text,false,11):null;
+                    java.util.function.ToDoubleFunction<String> width=value->{try{return chosen!=null?chosen.getStringWidth(value)*11/1000:new TextLayout(value,outline,new FontRenderContext(null,true,true)).getAdvance();}catch(Exception ex){throw new IllegalStateException(ex);}};
+                    var slot=new Line("",40,0,515,11,0,"",false);
+                    var rows=wrap(text,Collections.nCopies(text.length()+1,slot),555,1,width);
+                    if(rows==null)throw new ApiError(500,"PDF分页生成失败，请重试导出");
+                    for(String row:rows) {
+                        if(stream==null||y<45){
+                            if(stream!=null)stream.close();
+                            var page=new PDPage(org.apache.pdfbox.pdmodel.common.PDRectangle.A4);doc.addPage(page);
+                            stream=new PDPageContentStream(doc,page);y=page.getMediaBox().getHeight()-45;
+                        }
+                        if(!row.isBlank()){
+                            stream.setNonStrokingColor(new Color(0x253047));
+                            if(chosen!=null){stream.beginText();stream.setFont(chosen,11);stream.newLineAtOffset(40,y);stream.showText(row);stream.endText();}
+                            else drawOutline(stream,row,outline,40,y,1);
+                        }
+                        y-=16;
+                    }
+                    y-=6;
+                }
+            } finally {if(stream!=null)stream.close();}
+            doc.save(bytes);return bytes.toByteArray();
+        }
+    }
+
     private Map<Integer,String> validTranslations(String answer,List<Region> requested) {
         JsonNode root;
         try{root=json.readTree(answer);}catch(Exception e){return Map.of();}
@@ -231,7 +274,7 @@ public class PdfLayoutTranslation {
             }
             doc.save(bytes);
             if(bytes.size()>28_000_000)throw new ApiError(400,"翻译文件超过28MB，请拆分后处理");
-            return new Output(bytes.toByteArray(),text.toString(),List.copyOf(warnings));
+            return new Output(bytes.toByteArray(),text.toString(),List.copyOf(warnings),true);
         }
     }
     private static boolean canJoinInline(Region left,Region right) {
@@ -355,6 +398,7 @@ public class PdfLayoutTranslation {
                 row.append(separator).append(token);pos++;
             }
             rows.add(row.toString());
+            if(pos==remaining.size())break;
         }
         return pos==remaining.size()?rows:null;
     }

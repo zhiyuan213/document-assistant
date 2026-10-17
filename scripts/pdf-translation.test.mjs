@@ -39,11 +39,10 @@ test('a reopened page can recover the task before receiving its job id',async()=
 })
 
 
-test('format choices prepare one existing result and unavailable layout PDF is blocked',async()=>{
- const p=page();p.answer.value='Complete translation';p.usageDetails.value={pdfAvailable:false}
- assert.equal(p.exportFormat.value,'pdf');p.exportFormat.value='docx';p.chooseExportFormat('pdf');assert.equal(p.exportFormat.value,'docx');assert.equal(p.exports.length,0)
- p.chooseExportFormat('docx');await new Promise(resolve=>setImmediate(resolve))
- assert.equal(p.exports[0][1],'docx');assert.equal(p.exportFile.value.extension,'docx')
+test('PDF remains selectable for an older result whose original-layout PDF was unavailable',async()=>{
+ const p=page();p.answer.value='Complete translation';p.usageDetails.value={pdfAvailable:false};p.exportFormat.value='docx'
+ p.chooseExportFormat('pdf');await new Promise(resolve=>setImmediate(resolve))
+ assert.equal(p.exportFormat.value,'pdf');assert.equal(p.exports[0][1],'pdf');assert.equal(p.exportFile.value.extension,'pdf')
 })
 
 test('format preparation is silent, deduplicated and cannot overwrite a newer selection',async()=>{

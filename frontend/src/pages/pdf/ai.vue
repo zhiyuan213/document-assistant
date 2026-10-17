@@ -21,8 +21,7 @@
   <button v-if="(mode && selected.length && !answer) || busy || translationPending" class="ui-button process-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':current.action}}</button>
   <view v-if="error" class="error" role="alert">{{error}}</view>
   <button v-if="answer" class="step-header" :aria-expanded="activeStep==='result'" @click="toggleStep('result')"><text class="step-title">{{mode==='translate'?'04 翻译结果':'03 总结结果'}}</text><text class="step-arrow">{{activeStep==='result'?'−':'＋'}}</text></button>
-  <PdfStepPanel v-if="answer" :open="activeStep==='result'"><view class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF</button></view>
-   <view v-if="pdfUnavailable" class="ui-notice">{{usageDetails?.pdfUnavailableReason||'本次未生成保留版式的 PDF，可选择 Word。'}}</view>
+  <PdfStepPanel v-if="answer" :open="activeStep==='result'"><view class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting" @click="chooseExportFormat('pdf')">PDF</button></view>
    <view class="export-actions delivery-actions"><button class="ui-button" :disabled="exporting" @click="deliverReport">{{exporting?'正在准备文件…':'转发保存'}}</button></view>
   </view></PdfStepPanel>
   <PdfAiBilling v-if="!status.testMode" />
@@ -55,10 +54,9 @@ const translationKey='pdf-translation-job-v1',translationRequestKey='pdf-transla
 const mode=ref(''),selected=ref([]),page=ref('1'),answer=ref(''),error=ref(''),busy=ref(false),busyLabel=ref('正在处理…'),chargedCredits=ref(null),usageDetails=ref(null)
 let resultExpiresAt=0
 const exportFormat=ref('pdf')
-const pdfUnavailable=computed(()=>mode.value==='translate' && usageDetails.value?.pdfAvailable===false)
 const preparedFiles=new Map()
 let exportGeneration=0
-watch(answer,()=>{exportGeneration++;preparedFiles.clear();exportFile.value=null;exportFormat.value=pdfUnavailable.value?'docx':'pdf';if(answer.value&&miniProgram)exportReport(exportFormat.value)})
+watch(answer,()=>{exportGeneration++;preparedFiles.clear();exportFile.value=null;exportFormat.value='pdf';if(answer.value&&miniProgram)exportReport(exportFormat.value)})
 const statusLoaded=ref(false),statusError=ref('')
 const status=ref({enabled:false,vip:false,testMode:false,canUse:false,freeRemainingTokenCredits:0,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0,dailyLimit:100,dailyRemaining:0,monthlyTokenCredits:2000000,usedTokenCredits:0,remainingTokenCredits:0})
 const current=computed(()=>modes.find(x=>x.id===mode.value)||{title:'未选择',action:'请选择 AI 功能'})
@@ -172,7 +170,7 @@ async function exportReport(format){
  }catch(e){preparedFiles.delete(key);if(identity===exportIdentity())error.value=e.message;return null}
 }
 function chooseExportFormat(format){
- if(exporting.value || (format==='pdf'&&pdfUnavailable.value))return
+ if(exporting.value)return
  exportFormat.value=format;exportFile.value=null
  if(miniProgram)exportReport(format)
 }
