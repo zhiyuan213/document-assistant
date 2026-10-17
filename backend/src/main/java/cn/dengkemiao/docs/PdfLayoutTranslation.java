@@ -147,21 +147,7 @@ public class PdfLayoutTranslation {
             translated.putAll(accepted);
             progress.accept(10+(i+1)*75/batches.size());
         }
-        try { return render(plan,translated); }
-        catch(Exception e) {
-            log.warn("Layout PDF unavailable; exporting reflow PDF ({})",e.getClass().getSimpleName());
-            var warnings=new ArrayList<>(plan.warnings);
-            warnings.add("原版式无法完整容纳译文，已自动换行分页导出完整PDF；原页附后供核对图片和图形。");
-            var text=new StringBuilder();
-            for(int i=0;i<plan.pages.size();i++){text.append("[Page ").append(i+1).append("]\n");for(var region:plan.regions)if(region.page==i)text.append(translated.get(region.id)).append("\n\n");}
-            byte[] flowed=flowingPdf(text.toString());
-            try(var output=Loader.loadPDF(flowed);var original=Loader.loadPDF(plan.input);var bytes=new ByteArrayOutputStream()) {
-                // Keep every original image and graphic available for reference.
-                for(var page:original.getPages())output.importPage(page);
-                output.save(bytes);
-                return new Output(bytes.toByteArray(),text.toString(),List.copyOf(warnings),false);
-            }
-        }
+        return render(plan,translated);
     }
     /** Export existing validated text without calling the translation model again. */
     byte[] flowingPdf(String content) throws Exception {
@@ -355,12 +341,29 @@ public class PdfLayoutTranslation {
             }
             if(rows!=null)warnings.add("部分较长译文在相邻留白内换行或微调字号，请核对排版。");
         }
-        if(rows==null)throw new ApiError(422,"第"+(region.page+1)+"页第"+(region.id+1)+"文字块译文放不下原文字区域，未导出错版PDF");
+        if(rows==null) {
+            // Fit the complete translation into this region's original vertical
+            // band. Never append source pages or cover neighbouring artwork.
+            float top=first.y-first.size;
+            float bottom=region.lines.getLast().y+first.size*.25f;
+            float left=slots.getFirst().x;
+            for(int shrink=1;shrink<=100&&rows==null;shrink++) {
+                float candidate=first.size*(float)Math.pow(.85,shrink);
+                var compact=new ArrayList<Line>();
+                for(float baseline=top+candidate;baseline<=bottom&&compact.size()<text.length()+1;baseline+=candidate*1.2f)
+                    compact.add(new Line("",left,baseline,right-left,candidate,first.color,first.font,first.bold,first.alpha));
+                final float ratio=candidate/first.size;
+                var candidateRows=wrap(text,compact,right,1,value->measure.applyAsDouble(value)*ratio);
+                if(candidateRows!=null){rows=candidateRows;slots=compact;scale=1;fittedSize=candidate;}
+            }
+            if(rows==null)throw new ApiError(500,"译文字体排版失败，请重试导出");
+            warnings.add("部分较长译文已自动缩小字号以保持原页数，请放大查看。");
+        }
         if(scale<.995f)warnings.add("部分译文为适应原文字区域做了字宽调整，未增加页面。");
         for(int i=0;i<rows.size();i++) {
             if(rows.get(i).isBlank())continue;
             var line=slots.get(i);float x=page.getCropBox().getLowerLeftX()+line.x;
-            if(center>=0)x=page.getCropBox().getLowerLeftX()+center-(float)measure.applyAsDouble(rows.get(i))*scale/2;
+            if(center>=0)x=page.getCropBox().getLowerLeftX()+center-(float)measure.applyAsDouble(rows.get(i))*(fittedSize/first.size)*scale/2;
             float y=page.getCropBox().getUpperRightY()-line.y;
             stream.saveGraphicsState();stream.setNonStrokingColor(new Color(first.color));
             var transparency=new org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState();transparency.setNonStrokingAlphaConstant(first.alpha);stream.setGraphicsStateParameters(transparency);

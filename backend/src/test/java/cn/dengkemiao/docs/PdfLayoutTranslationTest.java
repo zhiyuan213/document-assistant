@@ -107,7 +107,7 @@ class PdfLayoutTranslationTest {
         var plan=new PdfLayoutTranslation.Plan(input,List.of(layout),List.of(new PdfLayoutTranslation.Region(0,0,List.of(address),"Rue")),3,List.of());
         var result=engine.render(plan,Map.of(0,"1 Jean-Henri Fabre Street"));
         try(var d=Loader.loadPDF(result.pdf())){assertTrue(new PDFTextStripper().getText(d).contains("1 Jean-Henri Fabre Street"));}
-        assertThrows(ApiError.class,()->engine.render(plan,Map.of(0,"A very long address ".repeat(150))));
+        try(var d=Loader.loadPDF(engine.render(plan,Map.of(0,"A very long address ".repeat(150))).pdf())){assertEquals(1,d.getNumberOfPages());assertEquals(150,new PDFTextStripper().getText(d).replaceAll("\\s+"," ").split("A very long address",-1).length-1);}
     }
     @Test void longWordWrapRetainsEveryCharacterAcrossOriginalLines() {
         var line=new PdfLayoutTranslation.Line("x",0,20,5,10,0,"Helvetica",false);
@@ -153,7 +153,7 @@ class PdfLayoutTranslationTest {
         var translated="This chapter describes the integrity principles that suppliers should uphold in their operations, with the aim of maintaining the relationship of mutual trust established between suppliers and the parks.";
         var result=engine.render(plan,Map.of(0,translated,1,"Next"));
         try(var doc=Loader.loadPDF(result.pdf())){assertEquals(1,doc.getNumberOfPages());assertTrue(new PDFTextStripper().getText(doc).contains("Next"));}
-        assertThrows(ApiError.class,()->engine.render(plan,Map.of(0,translated.repeat(8),1,"Next")));
+        try(var doc=Loader.loadPDF(engine.render(plan,Map.of(0,translated.repeat(8),1,"Next")).pdf())){assertEquals(1,doc.getNumberOfPages());assertTrue(new PDFTextStripper().getText(doc).contains("Next"));}
     }
     @Test void translatesAllBatchesAndQuotesEachIdInJson()throws Exception {
         var plan=engine.inspect(sample(),30,5,15000);var calls=new ArrayList<Integer>();
@@ -167,14 +167,14 @@ class PdfLayoutTranslationTest {
         assertFalse(calls.isEmpty());assertTrue(output.text().contains("[Page 1]"));assertTrue(output.pdf().length>100);
         assertTrue(engine.reserve(plan,"English","")>4000);
     }
-    @Test void overflowFailsWithoutDroppingTextAndRotatedPagesKeepTheirRotation()throws Exception {
+    @Test void overflowShrinksWithoutDroppingTextAndRotatedPagesKeepTheirRotation()throws Exception {
         var plan=engine.inspect(sample(),30,5,15000);var map=new HashMap<Integer,String>();plan.regions().forEach(r->map.put(r.id(),"Very long translated content ".repeat(200)));
-        var error=assertThrows(ApiError.class,()->engine.render(plan,map));assertEquals(422,error.status);
+        try(var doc=Loader.loadPDF(engine.render(plan,map).pdf())){assertEquals(plan.pages().size(),doc.getNumberOfPages());assertEquals(400,new PDFTextStripper().getText(doc).replaceAll("\\s+"," ").split("Very long translated content",-1).length-1);}
         byte[] rotated;try(var doc=Loader.loadPDF(sample());var out=new ByteArrayOutputStream()){doc.getPage(0).setRotation(90);doc.save(out);rotated=out.toByteArray();}
         var rotatedPlan=engine.inspect(rotated,30,5,15000);var translated=new HashMap<Integer,String>();rotatedPlan.regions().forEach(r->translated.put(r.id(),"English sentence."));
         try(var doc=Loader.loadPDF(engine.render(rotatedPlan,translated).pdf())){assertEquals(90,doc.getPage(0).getRotation());}
     }
-    @Test void layoutOverflowExportsCompletePaginatedPdfWithOriginalArtworkReference()throws Exception {
+    @Test void layoutOverflowKeepsOriginalPageCountAndArtwork()throws Exception {
         var plan=engine.inspect(sample(),30,5,15000);
         var output=engine.translate(plan,"English","",(system,user,cap)->{
             try {
@@ -183,14 +183,34 @@ class PdfLayoutTranslationTest {
                 return new DeepSeekService.Result(json.writeValueAsString(Map.of("translations",rows)),100,1000);
             }catch(Exception e){throw new RuntimeException(e);}
         },p->{});
-        assertNotNull(output.pdf());assertFalse(output.layoutPreserved());assertTrue(output.text().contains("Long translated passage"));
+        assertNotNull(output.pdf());assertTrue(output.layoutPreserved());assertTrue(output.text().contains("Long translated passage"));
         try(var doc=Loader.loadPDF(output.pdf());var original=Loader.loadPDF(plan.input())){
-            assertTrue(doc.getNumberOfPages()>original.getNumberOfPages());
+            assertEquals(original.getNumberOfPages(),doc.getNumberOfPages());
             String text=new PDFTextStripper().getText(doc).replaceAll("\\s+"," ");assertEquals(200,text.split("Long translated passage",-1).length-1);
-            var last=doc.getPage(doc.getNumberOfPages()-1);assertTrue(last.getResources().getXObjectNames().iterator().hasNext());
+            var last=doc.getPage(0);assertTrue(last.getResources().getXObjectNames().iterator().hasNext());
         }
         java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/translation-preview"));
-        java.nio.file.Files.write(java.nio.file.Path.of("target/translation-preview/reflow.pdf"),output.pdf());
+        java.nio.file.Files.write(java.nio.file.Path.of("target/translation-preview/shrink.pdf"),output.pdf());
+    }
+    @Test void ninePageTranslationStaysNinePagesWithImagesAndCompleteText()throws Exception {
+        byte[] input;
+        try(var source=Loader.loadPDF(sample());var doc=new PDDocument();var bytes=new ByteArrayOutputStream()){
+            for(int i=0;i<9;i++)doc.importPage(source.getPage(0));
+            doc.save(bytes);input=bytes.toByteArray();
+        }
+        var plan=engine.inspect(input,30,5,15000);var translations=new HashMap<Integer,String>();
+        plan.regions().forEach(r->translations.put(r.id(),"Complete translated passage ".repeat(40)));
+        var output=engine.render(plan,translations);
+        try(var doc=Loader.loadPDF(output.pdf())){
+            assertEquals(9,doc.getNumberOfPages());
+            String text=new PDFTextStripper().getText(doc).replaceAll("\\s+"," ");
+            assertEquals(720,text.split("Complete translated passage",-1).length-1);
+            assertFalse(text.contains("Bonjour"));
+            for(var page:doc.getPages())assertTrue(page.getResources().getXObjectNames().iterator().hasNext());
+            java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/translation-preview"));
+            javax.imageio.ImageIO.write(new PDFRenderer(doc).renderImageWithDPI(0,110),"png",new File("target/translation-preview/nine-page.png"));
+            java.nio.file.Files.write(java.nio.file.Path.of("target/translation-preview/nine-page.pdf"),output.pdf());
+        }
     }
     @Test void japaneseReflowProducesVisiblePaginatedPdf()throws Exception {
         byte[] bytes=engine.flowingPdf("[Page 1]\n"+"日本語の翻訳文です。内容を省略せず、改行して保存します。 ".repeat(300));
