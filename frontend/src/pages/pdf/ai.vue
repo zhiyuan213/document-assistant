@@ -60,7 +60,19 @@ const pickerText=computed(()=>miniProgram?'从微信聊天选择 PDF':'点击选
 watch([mode,languageIndex],()=>{if(!busy.value&&!translationPending.value){answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}})
 onLoad(options=>{if(modes.some(item=>item.id===options?.mode))mode.value=options.mode})
 onShow(()=>{refreshStatus();if(!busy.value&&!answer.value&&(uni.getStorageSync(translationKey)||uni.getStorageSync(translationRequestKey)))resumeTranslation()})
-async function refreshStatus(){statusError.value='';statusLoaded.value=false;try{status.value=await pdfRequest('/ai/status');statusLoaded.value=true}catch(e){status.value={...status.value,enabled:false};statusError.value=e.status===404?'当前服务器尚未提供 AI 接口，请部署包含 AI 功能的后端版本。':'无法获取 AI 服务状态，请稍后重试。'}}
+let statusRequestId=0
+async function refreshStatus(){
+ const requestId=++statusRequestId
+ statusError.value=''
+ try{
+  const latest=await pdfRequest('/ai/status')
+  if(requestId!==statusRequestId)return
+  status.value=latest;statusLoaded.value=true
+ }catch(e){
+  if(requestId!==statusRequestId)return
+  statusError.value=e.status===404?'当前服务器尚未提供 AI 接口，请部署包含 AI 功能的后端版本。':'无法更新 AI 额度，请点击重新检查。'
+ }
+}
 function selectMode(id){if(busy.value||exporting.value||translationPending.value)return;exportFile.value=null;mode.value=id;answer.value='';error.value='';translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);if(id!=='compare'&&selected.value.length>1)selected.value=selected.value.slice(0,1)}
 function chooseFiles(){
  if(busy.value||exporting.value||translationPending.value)return
@@ -86,10 +98,10 @@ async function run(){
   if(mode.value==='translate'){requestId=uni.getStorageSync(translationRequestKey)||Date.now()+'-'+Math.random().toString(36).slice(2);uni.setStorageSync(translationRequestKey,requestId);translationPending.value=true}
   busyLabel.value='正在分析…';let result=await submitPdfAi(mode.value,selected.value,'',1,languages[languageIndex.value].id,requestId)
   if(result.translationJobId){translationJob.value=result.translationJobId;translationPending.value=true;uni.setStorageSync(translationKey,result.translationJobId);result=await waitTranslation(result.translationJobId)}
-  applyResult(result);await refreshStatus()
+  applyResult(result)
  }
  catch(e){error.value=e.message||'AI 分析失败，请重试';if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}
- finally{busy.value=false}
+ finally{await refreshStatus();busy.value=false}
 }
 function applyResult(result){if(result.targetLanguage){const index=languages.findIndex(l=>l.id===result.targetLanguage);if(index>=0)languageIndex.value=index}answer.value=result.answer;chargedCredits.value=result.usedTokenCredits;usageDetails.value=result;translationWarnings.value=result.warnings||[];translationPending.value=false}
 async function waitTranslation(id){
@@ -103,7 +115,7 @@ async function waitTranslation(id){
  throw new Error('任务仍在后台处理中，重新进入本页会自动恢复进度，请勿重复提交。')
 }
 async function resumeTranslation(){if(busy.value)return;let id=translationJob.value||uni.getStorageSync(translationKey);const requestId=uni.getStorageSync(translationRequestKey);if(!id&&!requestId)return;busy.value=true;mode.value='translate';translationPending.value=true;error.value=''
- try{if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}translationJob.value=id;applyResult(await waitTranslation(id));await refreshStatus()}catch(e){error.value=e.message;if(e.status===404){translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey);if(e.message==='请求路径不存在'){error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'}else if(id){uni.removeStorageSync(translationRequestKey)}}}finally{busy.value=false}}
+ try{if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}translationJob.value=id;applyResult(await waitTranslation(id))}catch(e){error.value=e.message;if(e.status===404){translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey);if(e.message==='请求路径不存在'){error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'}else if(id){uni.removeStorageSync(translationRequestKey)}}}finally{await refreshStatus();busy.value=false}}
 function exportIdentity(){return JSON.stringify([exportGeneration,mode.value,translationJob.value,answer.value])}
 async function exportReport(format){
  if(!answer.value)return null

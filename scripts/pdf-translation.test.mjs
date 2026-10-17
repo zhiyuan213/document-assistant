@@ -3,16 +3,16 @@ import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import vm from 'node:vm'
 const source=(await readFile(new URL('../frontend/src/pages/pdf/ai.vue',import.meta.url),'utf8')).split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm,'')
-function page({lostSubmit=false,restore=false,exporter,delivery=async()=>({})}={}){
+function page({lostSubmit=false,restore=false,statusLoader,exporter,delivery=async()=>({})}={}){
  const storage=new Map(restore?[['pdf-translation-request-v1','original-key']]:[]),calls=[],exports=[],toasts=[];let polls=0,pick
  const context={ref:value=>({value}),computed:fn=>({get value(){return fn()}}),watch(){},onLoad(){},onShow(){},headerPadding(){},setTimeout:fn=>queueMicrotask(fn),
   wx:{chooseMessageFile(options){pick=options}},uni:{getStorageSync:key=>storage.get(key),setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),chooseFile(){},showToast(v){toasts.push(v.title)},navigateTo(){},switchTab(){},setClipboardData(){}},
-  pdfRequest:async path=>{calls.push(path);if(path==='/ai/status')return {canUse:true,enabled:true,dailyRemaining:50};if(path.startsWith('/ai/translations/by-request/'))return {translationJobId:'saved-job',status:'processing'};if(path.startsWith('/ai/translations/'))return ++polls===1?{status:'processing',progress:50}:{status:'completed',answer:'English result',usedTokenCredits:200,inputTokens:100,outputTokens:25,warnings:['Check OCR']};throw Error(path)},
+  pdfRequest:async path=>{calls.push(path);if(path==='/ai/status'&&statusLoader)return statusLoader();if(path==='/ai/status')return {canUse:true,enabled:true,dailyRemaining:50};if(path.startsWith('/ai/translations/by-request/'))return {translationJobId:'saved-job',status:'processing'};if(path.startsWith('/ai/translations/'))return ++polls===1?{status:'processing',progress:50}:{status:'completed',answer:'English result',usedTokenCredits:200,inputTokens:100,outputTokens:25,warnings:['Check OCR']};throw Error(path)},
   estimatePdfAi:async()=>({documentTranslation:true,canRun:true,remainingTokenCredits:2000000}),
   submitPdfAi:async(...args)=>{calls.push({submit:args});if(lostSubmit)throw Error('network');return {translationJobId:'saved-job'}},
   exportAiReport:async(...args)=>{exports.push(args);if(exporter)return exporter(...args);return {path:'/test/result.'+args[1],extension:args[1]}},shareSavedFile:delivery,saveFileToPhone:delivery,openSavedPdf:async()=>{}
  }
- const p=vm.runInNewContext(source+'\n({chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error})',context)
+ const p=vm.runInNewContext(source+'\n({chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
  p.mode.value='translate';p.selected.value=[{path:'/old.pdf',name:'old.pdf',size:20}]
  return {...p,storage,calls,exports,toasts,pick:()=>pick}
 }
@@ -63,4 +63,21 @@ test('only completed native delivery reports success; unsupported or cancelled a
   await p.exportReport('docx');assert.equal(p.toasts.length,0)
   await p.deliverReport('download');assert.equal(p.toasts.length,kind==='success'?1:0);assert.equal(p.exporting.value,false)
  }
+})
+
+test('completion and failed submission both reload the current balance',async()=>{
+ for(const lostSubmit of [false,true]){
+  const p=page({lostSubmit,statusLoader:async()=>({enabled:true,canUse:true,dailyRemaining:36,monthlyRemainingTokenCredits:123})})
+  await p.run();assert.equal(p.status.value.monthlyRemainingTokenCredits,123);assert.equal(p.status.value.dailyRemaining,36)
+  assert.equal(p.calls.at(-1),'/ai/status')
+ }
+})
+test('an older status response cannot replace a newer balance; refresh failures retain it',async()=>{
+ const pending=[];const p=page({statusLoader:()=>new Promise((resolve,reject)=>pending.push({resolve,reject}))})
+ const old=p.refreshStatus(),latest=p.refreshStatus()
+ pending[1].resolve({monthlyRemainingTokenCredits:100});await latest
+ pending[0].resolve({monthlyRemainingTokenCredits:200});await old
+ assert.equal(p.status.value.monthlyRemainingTokenCredits,100)
+ const failed=p.refreshStatus();pending[2].reject(Error('network'));await failed
+ assert.equal(p.status.value.monthlyRemainingTokenCredits,100);assert.ok(p.statusError.value)
 })
