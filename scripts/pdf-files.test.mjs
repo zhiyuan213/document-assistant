@@ -6,6 +6,11 @@ source = source.replace("import { baseURL } from './api'", "const baseURL = 'htt
 source = source.replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
 const { openSavedPdf, savePdf } = await import('data:text/javascript,' + encodeURIComponent(source))
 const file = { path: '/test/result.zip', name: 'result.zip', extension: 'zip' }
+test('translated text files use sharing because WeChat openDocument does not support txt',async()=>{
+ let shared=false
+ await openSavedPdf({...file,extension:'txt'}, {shareFileMessage(options){shared=true;options.success({})},openDocument(){throw Error('txt cannot be opened as a document')}})
+ assert.equal(shared,true)
+})
 test('ZIP sharing is invoked synchronously from the second tap', async () => {
   let invoked = false
   const promise = openSavedPdf(file, { shareFileMessage(options) { invoked = true; queueMicrotask(() => options.success({})) } })

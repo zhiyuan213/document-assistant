@@ -25,9 +25,12 @@ public class AiReportExport {
         } finally { slots.release(); }
     }
     static byte[] word(String content) throws Exception {
+        return word(content,"PDF 文档总结报告");
+    }
+    static byte[] word(String content,String headingText) throws Exception {
         try(var doc=new XWPFDocument();var out=new ByteArrayOutputStream()) {
             var title=doc.createParagraph();title.setAlignment(ParagraphAlignment.CENTER);
-            var tr=title.createRun();tr.setText("PDF 文档总结报告");tr.setBold(true);tr.setFontSize(20);tr.setColor("245BAD");tr.setFontFamily("WenQuanYi Micro Hei");
+            var tr=title.createRun();tr.setText(headingText);tr.setBold(true);tr.setFontSize(20);tr.setColor("245BAD");tr.setFontFamily("WenQuanYi Micro Hei");
             for(String line:content.split("\\R",-1)) {
                 var p=doc.createParagraph();p.setSpacingAfter(120);p.setSpacingBetween(1.4);
                 var run=p.createRun();run.setFontFamily("WenQuanYi Micro Hei");
@@ -35,7 +38,7 @@ public class AiReportExport {
                 run.setBold(heading);run.setFontSize(heading?14:11);run.setColor(heading?"245BAD":"253047");
                 run.setText(line.replaceFirst("^#{1,3}\\s+", ""));
             }
-            var p=doc.createParagraph();var note=p.createRun();note.setText("AI 生成内容，请结合原文核对。来源页码标记对应原 PDF。");note.setFontSize(9);note.setColor("777777");
+            var p=doc.createParagraph();var note=p.createRun();note.setText(headingText.equals("Translated Document")?"AI-generated translation. Verify against the source document. Page markers refer to the original PDF.":"AI 生成内容，请结合原文核对。来源页码标记对应原 PDF。");note.setFontSize(9);note.setColor("777777");
             doc.write(out);return out.toByteArray();
         }
     }

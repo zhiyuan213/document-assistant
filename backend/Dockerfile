@@ -5,7 +5,7 @@ RUN mvn -q dependency:go-offline
 COPY src src
 RUN mvn -q package -DskipTests
 FROM eclipse-temurin:21-jre
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ca-certificates-java libreoffice-writer libreoffice-calc libreoffice-impress tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng poppler-utils fonts-wqy-microhei \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ca-certificates-java libreoffice-writer libreoffice-calc libreoffice-impress tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng tesseract-ocr-fra poppler-utils fonts-wqy-microhei fonts-noto-core fonts-noto-cjk \
     && update-ca-certificates -f \
     && test -s /etc/ssl/certs/java/cacerts \
     && rm -rf /var/lib/apt/lists/*

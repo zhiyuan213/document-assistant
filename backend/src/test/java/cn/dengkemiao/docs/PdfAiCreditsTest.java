@@ -41,11 +41,19 @@ class PdfAiCreditsTest {
         String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).get("token").asText();
         var file=new org.springframework.mock.web.MockMultipartFile("files","synthetic.pdf","application/pdf",samplePdf());
         when(model.enabled()).thenReturn(true);
-        when(model.complete(anyString(),anyString(),anyInt(),anyBoolean())).thenReturn(new DeepSeekService.Result("Translated text",100,25));
+        when(model.complete(anyString(),anyString(),anyInt(),anyBoolean())).thenReturn(new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"Translated text\"}]}",100,25));
         org.springframework.test.util.ReflectionTestUtils.setField(ai,"testMode",true);
         try {
-            mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").header("Authorization","Bearer "+token)).andExpect(status().isOk());
-            verify(model).complete(contains("指定的目标语言"),contains("目标语言：英语"),anyInt(),eq(false));
+            var started=mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn();
+            String id=json.readTree(started.getResponse().getContentAsString()).path("translationJobId").asText();assertFalse(id.isBlank());
+            com.fasterxml.jackson.databind.JsonNode result=null;
+            for(int i=0;i<100;i++){result=json.readTree(mvc.perform(get("/api/pdf/ai/translations/"+id).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());if(!Set.of("queued","processing").contains(result.path("status").asText()))break;Thread.sleep(30);}
+            assertEquals("completed",result.path("status").asText(),result.toString());
+            assertEquals(0,result.path("usedTokenCredits").asLong());
+            verify(model).complete(contains("Translate document text"),contains("Target language: 英语"),anyInt(),eq(true));
+            for(String format:List.of("pdf","docx","txt"))mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format",format).header("Authorization","Bearer "+token)).andExpect(status().isOk());
+            String stranger=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();
+            mvc.perform(get("/api/pdf/ai/translations/"+id).header("Authorization","Bearer "+stranger)).andExpect(status().isNotFound());
             mvc.perform(multipart("/api/pdf/ai/estimate").file(file).param("mode","translate").param("targetLanguage","invalid").header("Authorization","Bearer "+token)).andExpect(status().isBadRequest());
             mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","watermark").header("Authorization","Bearer "+token)).andExpect(status().isBadRequest());
             mvc.perform(post("/api/pdf/ai/export").header("Authorization","Bearer "+token).contentType("application/json").content(json.writeValueAsString(Map.of("content","一、重点内容\n测试报告","format","docx")))).andExpect(status().isOk()).andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.containsString(".docx")));
@@ -61,6 +69,22 @@ class PdfAiCreditsTest {
         assertEquals(800,credits.snapshot(id).topup());
         credits.settle(id,reservation,50);
         assertEquals(50,credits.snapshot(id).monthly()); assertEquals(1000,credits.snapshot(id).topup());
+    }
+    @Test void documentTranslationRetriesReuseTheJobAndDownloadsNeverChargeAgain()throws Exception {
+        String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();
+        String hash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String owner=db.queryForObject("SELECT id FROM pdf_visitor WHERE token_hash=?",String.class,hash);credits.grantTopup(owner,2000000);
+        when(model.enabled()).thenReturn(true);when(model.complete(anyString(),anyString(),anyInt(),eq(true))).thenReturn(new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"Translated text\"}]}",100,25));
+        var file=new org.springframework.mock.web.MockMultipartFile("files","synthetic.pdf","application/pdf",samplePdf());String key=UUID.randomUUID().toString();
+        mvc.perform(multipart("/api/pdf/ai/estimate").file(file).param("mode","translate").param("targetLanguage","en").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.documentTranslation").value(true));assertEquals(2000000,credits.snapshot(owner).total());
+        String id=json.readTree(mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").param("requestId",key).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("translationJobId").asText();
+        for(int i=0;i<100;i++){String state=db.queryForObject("SELECT status FROM pdf_translation_job WHERE id=?",String.class,id);if(!Set.of("queued","processing").contains(state))break;Thread.sleep(30);}
+        assertEquals("completed",db.queryForObject("SELECT status FROM pdf_translation_job WHERE id=?",String.class,id));assertEquals(1999800,credits.snapshot(owner).total());
+        mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").param("requestId",key).header("Authorization","Bearer "+token)).andExpect(jsonPath("$.translationJobId").value(id));
+        mvc.perform(get("/api/pdf/ai/translations/by-request/"+key).header("Authorization","Bearer "+token)).andExpect(jsonPath("$.translationJobId").value(id));
+        for(String format:List.of("pdf","docx","txt"))mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format",format).header("Authorization","Bearer "+token)).andExpect(status().isOk());
+        verify(model,times(1)).complete(anyString(),anyString(),anyInt(),anyBoolean());assertEquals(1999800,credits.snapshot(owner).total());
+        assertEquals(1,db.queryForObject("SELECT request_count FROM pdf_ai_daily_usage WHERE visitor_id=?",Integer.class,owner));
     }
     @Test void expiredMembershipCanStillSpendTopup() {
         String id=owner(true,1000);

@@ -29,6 +29,9 @@ public class PdfAiController {
     private final DeepSeekService deepseek;
     private final PdfAiCredits credits;
     private final AiReportExport reports;
+    private final PdfLayoutTranslation translation;
+    private final PdfTranslationJobs translationJobs;
+    private final java.util.concurrent.Semaphore inspections=new java.util.concurrent.Semaphore(2);
     @Value("${PDF_AI_TEST_MODE:false}") private boolean testMode;
     @Value("${PDF_AI_DAILY_REQUEST_LIMIT:50}") private int dailyLimit;
     @Value("${PDF_AI_MAX_PAGES:30}") private int maxPages;
@@ -36,8 +39,9 @@ public class PdfAiController {
     @Value("${PDF_AI_MAX_INPUT_CHARS:15000}") private int maxInputChars;
     @Value("${PDF_AI_MAX_OUTPUT_TOKENS:1500}") private int maxOutputTokens;
 
-    public PdfAiController(JdbcTemplate db, PlatformTransactionManager manager, DeepSeekService deepseek, PdfAiCredits credits, AiReportExport reports) {
+    public PdfAiController(JdbcTemplate db, PlatformTransactionManager manager, DeepSeekService deepseek, PdfAiCredits credits, AiReportExport reports, PdfLayoutTranslation translation, PdfTranslationJobs translationJobs) {
         this.db = db; this.tx = new TransactionTemplate(manager); this.deepseek = deepseek; this.credits = credits; this.reports=reports;
+        this.translation=translation;this.translationJobs=translationJobs;
     }
 
     @GetMapping("/status") public Map<String, Object> status(@RequestHeader(value="Authorization", required=false) String header) {
@@ -62,6 +66,13 @@ public class PdfAiController {
             @RequestParam(value="targetLanguage", required=false, defaultValue="zh-CN") String targetLanguage,
             @RequestParam("files") List<MultipartFile> files) throws Exception {
         String owner = usageOwner(visitor(header));
+        if(mode.equals("translate")) {
+            validateRequest(owner,mode,prompt,files);translationPrompt(targetLanguage,prompt);
+            var plan=translationPlan(fileBytes(files).getFirst());
+            long amount=translation.reserve(plan,LANGUAGES.get(targetLanguage),prompt),remaining=remainingCredits(owner);
+            return Map.of("reservedTokenCredits",testMode?0L:amount,"estimatedTokenCredits",amount,"testMode",testMode,"remainingTokenCredits",remaining,
+                    "canRun",(testMode||remaining>=amount)&&todayUsed(owner)<boundedDailyLimit(),"pages",plan.pages().size(),"warnings",plan.warnings(),"documentTranslation",true);
+        }
         if (mode.equals("translate")) prompt = translationPrompt(targetLanguage, prompt);
         validateRequest(owner, mode, prompt, files);
         List<byte[]> input = fileBytes(files);
@@ -88,12 +99,14 @@ public class PdfAiController {
             @RequestParam(value="prompt", required=false, defaultValue="") String prompt,
             @RequestParam(value="page", required=false, defaultValue="1") int page,
             @RequestParam(value="targetLanguage", required=false, defaultValue="zh-CN") String targetLanguage,
+            @RequestParam(value="requestId", required=false, defaultValue="") String requestId,
             @RequestParam("files") List<MultipartFile> files) throws Exception {
         String owner = usageOwner(visitor(header));
         if (!MODES.contains(mode)) throw new ApiError(400, "请选择有效的 AI 功能");
         if (!deepseek.enabled()) throw new ApiError(503, "AI 服务尚未配置");
         if (!testMode && remainingCredits(owner)<=0) throw new ApiError(402, "AI 额度不足，请开通月卡或购买加油包");
         validateRequest(owner, mode, prompt, files);
+        if(mode.equals("translate"))return startTranslation(owner,targetLanguage,prompt,fileBytes(files).getFirst(),requestId);
         if (mode.equals("translate")) prompt = translationPrompt(targetLanguage, prompt);
         List<byte[]> input = fileBytes(files);
         boolean apiAttempted = false;
@@ -145,6 +158,66 @@ public class PdfAiController {
 
     private static final Map<String,String> LANGUAGES = Map.ofEntries(
         Map.entry("zh-CN","简体中文"),Map.entry("zh-TW","繁体中文"),Map.entry("en","英语"),Map.entry("ja","日语"),Map.entry("ko","韩语"),Map.entry("fr","法语"),Map.entry("de","德语"),Map.entry("es","西班牙语"),Map.entry("pt","葡萄牙语"),Map.entry("ru","俄语"),Map.entry("ar","阿拉伯语"),Map.entry("it","意大利语"));
+    private PdfLayoutTranslation.Plan translationPlan(byte[] bytes)throws Exception {
+        if(!inspections.tryAcquire())throw new ApiError(429,"文档检查繁忙，请稍后重试");
+        try{return translation.inspect(bytes,Math.min(30,Math.max(1,maxPages)),Math.min(5,Math.max(1,maxScanPages)),boundedInputChars());}
+        finally{inspections.release();}
+    }
+    private Map<String,Object> startTranslation(String owner,String language,String extra,byte[] bytes,String requestId)throws Exception {
+        translationPrompt(language,extra);
+        String key=requestId.isBlank()?UUID.randomUUID().toString():requestId;
+        if(!key.matches("[A-Za-z0-9-]{1,64}"))throw new ApiError(400,"翻译请求标识无效，请重新选择文件");
+        var existing=translationJobs.existing(owner,key);if(existing!=null)return existing;
+        var plan=translationPlan(bytes);long amount=translation.reserve(plan,LANGUAGES.get(language),extra);
+        return tx.execute(s->{
+            db.queryForList("SELECT id FROM pdf_visitor WHERE id=? FOR UPDATE",owner);
+            var found=translationJobs.existing(owner,key);if(found!=null)return found;
+            return enqueueTranslation(owner,language,extra,plan,amount,key);
+        });
+    }
+    private Map<String,Object> enqueueTranslation(String owner,String language,String extra,PdfLayoutTranslation.Plan plan,long amount,String key) {
+        var reservation=reserve(owner,amount);
+        try {return translationJobs.start(owner,key,progress->{
+            long[] usage={0,0};boolean[] attempted={false},uncertain={false};
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.MINUTES.toNanos(30);
+            try {
+                var result=translation.translate(plan,LANGUAGES.get(language),extra,(system,content,ceiling)->{
+                    if(System.nanoTime()>deadline)throw new ApiError(504,"翻译任务超时，请拆分后重试；已确认用量按实际结算");
+                    attempted[0]=true;uncertain[0]=true;
+                    var response=deepseek.complete(system,content,ceiling,true);
+                    usage[0]+=response.inputTokens();usage[1]+=response.outputTokens();uncertain[0]=false;return response;
+                },progress);
+                progress.accept(90);
+                byte[] word=AiReportExport.word(result.text(),"Translated Document");
+                long charged=settleTokens(owner,reservation,new DeepSeekService.Result("translated",Math.toIntExact(usage[0]),Math.toIntExact(usage[1])));
+                var response=new HashMap<String,Object>();response.put("answer",result.text());response.put("warnings",result.warnings());
+                response.put("usedTokenCredits",charged);response.put("inputTokens",usage[0]);response.put("outputTokens",usage[1]);
+                response.put("testMode",reservation.allocation==null);response.put("actualTokenCredits",usage[0]+4*usage[1]);
+                response.put("monthlyChargedCredits",reservation.allocation==null?0L:Math.min(charged,reservation.allocation.monthly()));
+                response.put("topupChargedCredits",reservation.allocation==null?0L:Math.max(0,charged-reservation.allocation.monthly()));
+                response.put("pages",plan.pages().size());
+                response.put("pdfAvailable",result.pdf()!=null);
+                response.put("targetLanguage",language);
+                return new PdfTranslationJobs.Completed(result.pdf(),word,response);
+            } catch(Exception e) {
+                if(!attempted[0])refund(owner,reservation);
+                else if(!uncertain[0])settleTokens(owner,reservation,new DeepSeekService.Result("partial",Math.toIntExact(usage[0]),Math.toIntExact(usage[1])));
+                if(uncertain[0])throw new ApiError(502,"AI接口调用结果未确认，预占额度暂未释放，请核对用量后重试");
+                throw e;
+            }
+        });}catch(Exception e){refund(owner,reservation);throw e;}
+    }
+    @GetMapping("/translations/{id}") public Map<String,Object> translationState(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header)throws Exception {
+        return translationJobs.state(usageOwner(visitor(header)),id);
+    }
+    @GetMapping("/translations/by-request/{requestId}") public Map<String,Object> translationByRequest(@PathVariable String requestId,@RequestHeader(value="Authorization",required=false)String header)throws Exception {
+        String owner=usageOwner(visitor(header));var existing=translationJobs.existing(owner,requestId);
+        if(existing==null)throw new ApiError(404,"翻译尚未提交成功，请再次确认处理；相同请求不会重复扣费");
+        return translationJobs.state(owner,existing.get("translationJobId").toString());
+    }
+    @GetMapping("/translations/{id}/file") public org.springframework.http.ResponseEntity<byte[]> translationFile(@PathVariable String id,@RequestParam String format,@RequestHeader(value="Authorization",required=false)String header)throws Exception {
+        return translationJobs.download(usageOwner(visitor(header)),id,format);
+    }
     private String translationPrompt(String language, String extra) {
         if (!LANGUAGES.containsKey(language)) throw new ApiError(400,"请选择支持的目标语言");
         if (extra.length()>1000) throw new ApiError(400,"补充要求最多1000字");
