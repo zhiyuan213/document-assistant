@@ -9,7 +9,7 @@
    <view :class="['package',{selected:selectedPackage==='monthly'}]" @click="selectedPackage='monthly'"><view class="package-top"><view class="package-name">AI 月卡<text>适合日常使用</text></view><view class="package-price"><text>¥</text>{{monthlyPrice}}<text>/ 月</text></view></view><view class="package-bottom"><view>每周期 {{formatCredits(aiStatus.monthlyTokenCredits ?? 2000000)}} 加权额度<text>随会员周期刷新，到期剩余额度不结转</text></view><view class="package-check">{{selectedPackage==='monthly'?'✓':''}}</view></view></view>
    <view :class="['package',{selected:selectedPackage==='ai-topup'}]" @click="selectedPackage='ai-topup'"><view class="package-top"><view class="package-name">AI 加油包<text>适合临时加量</text></view><view class="package-price"><text>¥</text>9.90<text>/ 包</text></view></view><view class="package-bottom"><view>增加 2,000,000 加权额度<text>长期有效，可叠加，会员到期后仍可使用</text></view><view class="package-check">{{selectedPackage==='ai-topup'?'✓':''}}</view></view></view>
    <PdfAiBilling />
-   <button class="ui-button" :disabled="!billingEnabled || !paymentEnabled || purchasing || aiStatus.testMode" :loading="purchasing" @click="buy(selectedPackage)">{{purchasing?'正在发起支付…':aiStatus.testMode?'测试模式 · 无需购买':billingEnabled && paymentEnabled?(pendingOrder?'查询支付结果':'微信支付 ¥'+(selectedPackage==='monthly'?monthlyPrice:'9.90')):'购买暂未开放'}}</button>
+   <button class="ui-button" :disabled="!billingEnabled || !paymentEnabled || purchasing || aiStatus.testMode" :loading="purchasing" @click="buy(selectedPackage)">{{purchasing?(pendingOrder?'正在确认支付结果…':'正在发起支付…'):aiStatus.testMode?'测试模式 · 无需购买':billingEnabled && paymentEnabled?(pendingOrder?'查询支付结果':'微信支付 ¥'+(selectedPackage==='monthly'?monthlyPrice:'9.90')):'购买暂未开放'}}</button>
    <view class="purchase-note">主动购买 · 不自动续费 · 不自动扣款</view><view class="ui-caption limits">每个账号每日最多 50 次。单次最多 30 页、15,000 个文字字符；扫描件最多 5 页。</view>
   </template>
   <view v-else class="ui-notice">{{billingError || '正在获取额度信息…'}}</view>
@@ -56,7 +56,7 @@ async function buy(packageId){if(purchasing.value||!billingEnabled.value||!payme
   storePending({orderId:order.orderId,packageId})
   try{await requestPdfPayment(order,wx)}catch(e){
    if(String(e?.errMsg||'').toLowerCase().includes('cancel')){storePending(null);await refresh();return}
-   throw new Error(e.message||(e.errMsg?'支付未完成：'+e.errMsg:'支付结果暂未确认，请查询订单，不要重复付款'))
+   // A cashier error or missing callback is not proof of non-payment. Query the saved order below.
   }
   const state=await pollPurchase(pendingOrder.value);await refresh()
   uni.showModal({title:state.paid?'购买成功':'正在确认支付',content:state.paid?(packageId==='ai-topup'?'200 万加油包额度已到账，可继续使用 AI。':'月卡会员已开通。'):['refunded','closed','failed'].includes(state.status)?'订单已关闭或退款，请核对微信账单。':'支付结果正在由微信确认，请稍后查询订单查看额度。',showCancel:false})

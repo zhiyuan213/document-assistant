@@ -13,9 +13,9 @@ test('virtual payment receives only signed platform fields and never falls back'
  await assert.rejects(requestPdfPayment(parameters,{requestPayment(){legacy=true}}),/更新微信/);assert.equal(legacy,false)
  await assert.rejects(requestPdfPayment({...parameters,paySig:''},{requestVirtualPayment(){throw Error('must not call')}}),/参数不完整/)
 })
-function page({cancel=false,platform=true,confirmAfter=1,queryFails=false}={}){
+function page({cancel=false,platform=true,confirmAfter=1,queryFails=false,cashierError=false}={}){
  const requests=[],modals=[],storage=new Map();let polls=0,onShow
- const context={ref:v=>({value:v}),computed:f=>({get value(){return f()}}),onShow:f=>{onShow=f},requestPdfPayment,setTimeout:f=>{queueMicrotask(f)},wx:{login(p){p.success({code:'fresh-login-code'})},...(platform?{requestVirtualPayment(p){cancel?p.fail({errMsg:'requestVirtualPayment:fail cancel'}):p.success({})}}:{})},uni:{getStorageSync:k=>storage.get(k),setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k),showModal:p=>modals.push(p),switchTab:()=>{}},pdfRequest:async(path,method,body)=>{
+ const context={ref:v=>({value:v}),computed:f=>({get value(){return f()}}),onShow:f=>{onShow=f},requestPdfPayment,setTimeout:f=>{queueMicrotask(f)},wx:{login(p){p.success({code:'fresh-login-code'})},...(platform?{requestVirtualPayment(p){cancel?p.fail({errMsg:'requestVirtualPayment:fail cancel'}):cashierError?p.fail({errMsg:'requestVirtualPayment:fail unknown'}):p.success({})}}:{})},uni:{getStorageSync:k=>storage.get(k),setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k),showModal:p=>modals.push(p),switchTab:()=>{}},pdfRequest:async(path,method,body)=>{
   requests.push({path,method,body})
   if(path==='/quota')return {billingEnabled:true,paymentEnabled:true,paymentProvider:'virtual',wechatLoginEnabled:true,monthlyPriceFen:990,membership:{active:false}}
   if(path==='/login')return {ok:true}
@@ -37,3 +37,14 @@ test('fresh login code goes to server purchase and success waits for server conf
 test('cancellation never displays purchase success',async()=>{const p=page({cancel:true});await p.refresh();await p.buy('monthly');assert.equal(p.modals.some(m=>m.title==='购买成功'),false);assert.equal(p.pendingOrder.value,null)})
 test('missing platform capability prevents order creation',async()=>{const p=page({platform:false});await p.refresh();await p.buy('monthly');assert.equal(p.requests.some(r=>r.path==='/purchase'),false);assert.match(p.modals.at(-1).content,/更新微信/)})
 test('uncertain payment keeps only the order reference for retry',async()=>{const p=page({queryFails:true});await p.refresh();await p.buy('ai-topup');assert.equal(p.pendingOrder.value.orderId,'owned-order');assert.equal(p.pendingOrder.value.signData,undefined);assert.equal(p.modals.some(m=>m.title==='购买成功'),false)})
+
+test('missing cashier callbacks time out without declaring payment failed',async()=>{
+ await assert.rejects(requestPdfPayment(parameters,{requestVirtualPayment(){}},5),/查询订单/)
+})
+test('cashier errors still reconcile the existing order before reporting a result',async()=>{
+ const p=page({cashierError:true});await p.refresh()
+ // The page must query after any non-cancellation cashier error, including timeout.
+ assert.equal(p.pendingOrder.value,null)
+ await p.buy('monthly');assert.equal(p.pendingOrder.value,null)
+ assert.equal(p.modals.at(-1).title,'购买成功')
+})
