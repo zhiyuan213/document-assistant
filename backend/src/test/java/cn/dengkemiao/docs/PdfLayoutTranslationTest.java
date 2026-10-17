@@ -63,6 +63,29 @@ class PdfLayoutTranslationTest {
         var plan=engine.inspect(input,30,5,15000);var result=engine.render(plan,Map.of(0,"Responsible Purchasing Policy"));
         try(var d=Loader.loadPDF(result.pdf())){assertEquals(1,d.getNumberOfPages());assertTrue(new PDFTextStripper().getText(d).contains("Responsible Purchasing Policy"));}
     }
+    @Test void shortAddressUsesBlankSpaceButStopsAtTheNextColumn()throws Exception {
+        var input=sample();var address=new PdfLayoutTranslation.Line("Rue",72,490,30,15,0,"Helvetica",false);
+        var neighbor=new PdfLayoutTranslation.Line("Other column",312,490,150,15,0,"Helvetica",false);
+        var layout=new PdfLayoutTranslation.Page(PDRectangle.A4.getWidth(),PDRectangle.A4.getHeight(),false,List.of(address,neighbor));
+        var plan=new PdfLayoutTranslation.Plan(input,List.of(layout),List.of(new PdfLayoutTranslation.Region(0,0,List.of(address),"Rue")),3,List.of());
+        var result=engine.render(plan,Map.of(0,"1 Jean-Henri Fabre Street"));
+        try(var d=Loader.loadPDF(result.pdf())){assertTrue(new PDFTextStripper().getText(d).contains("1 Jean-Henri Fabre Street"));}
+        assertThrows(ApiError.class,()->engine.render(plan,Map.of(0,"A very long address ".repeat(15))));
+    }
+    @Test void longWordWrapRetainsEveryCharacterAcrossOriginalLines() {
+        var line=new PdfLayoutTranslation.Line("x",0,20,5,10,0,"Helvetica",false);
+        String text="https://example.com/longpath";
+        var rows=PdfLayoutTranslation.wrap(text,Collections.nCopies(6,line),5,1,String::length);
+        assertNotNull(rows);assertEquals(text,String.join("",rows));
+    }
+    @Test void multilineParagraphCanUseItsClearContainerWithoutChangingBaselines()throws Exception {
+        var input=sample();var a=new PdfLayoutTranslation.Line("Tiny",40,200,30,12,0,"Helvetica",false);
+        var b=new PdfLayoutTranslation.Line("text",40,218,25,12,0,"Helvetica",false);
+        var page=new PdfLayoutTranslation.Page(PDRectangle.A4.getWidth(),PDRectangle.A4.getHeight(),false,List.of(a,b));
+        var plan=new PdfLayoutTranslation.Plan(input,List.of(page),List.of(new PdfLayoutTranslation.Region(0,0,List.of(a,b),"Tiny text")),9,List.of());
+        var output=engine.render(plan,Map.of(0,"This complete translated paragraph can use the empty space on its original lines without adding pages."));
+        try(var doc=Loader.loadPDF(output.pdf())){assertEquals(1,doc.getNumberOfPages());assertTrue(new PDFTextStripper().getText(doc).contains("This complete translated paragraph"));}
+    }
     @Test void translatesAllBatchesAndQuotesEachIdInJson()throws Exception {
         var plan=engine.inspect(sample(),30,5,15000);var calls=new ArrayList<Integer>();
         var output=engine.translate(plan,"English","Keep names",(system,user,cap)->{

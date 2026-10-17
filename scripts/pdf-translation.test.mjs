@@ -12,7 +12,7 @@ function page({lostSubmit=false,restore=false}={}){
   submitPdfAi:async(...args)=>{calls.push({submit:args});if(lostSubmit)throw Error('network');return {translationJobId:'saved-job'}},
   exportAiReport:async(...args)=>{exports.push(args);return {path:'/test/result.'+args[1],extension:args[1]}},openSavedPdf:async()=>{}
  }
- const p=vm.runInNewContext(source+'\n({chooseFiles,selected,mode,run,resumeTranslation,exportReport,answer,busy,translationPending,translationJob,estimate,error})',context)
+ const p=vm.runInNewContext(source+'\n({chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,usageDetails,answer,busy,translationPending,translationJob,estimate,error})',context)
  p.mode.value='translate';p.selected.value=[{path:'/old.pdf',name:'old.pdf',size:20}]
  return {...p,storage,calls,exports,pick:()=>pick}
 }
@@ -37,4 +37,12 @@ test('a lost submission response remains recoverable by request id without anoth
 })
 test('a reopened page can recover the task before receiving its job id',async()=>{
  const p=page({restore:true});await p.resumeTranslation();assert.equal(p.answer.value,'English result');assert.equal(p.translationJob.value,'saved-job');assert.equal(p.calls.filter(v=>v.submit).length,0)
+})
+
+
+test('format choices prepare one existing result and unavailable layout PDF is blocked',async()=>{
+ const p=page();p.answer.value='Complete translation';p.usageDetails.value={pdfAvailable:false}
+ p.chooseExportFormat('pdf');assert.equal(p.exportFormat.value,'docx');assert.equal(p.exports.length,0)
+ p.chooseExportFormat('docx');await new Promise(resolve=>setImmediate(resolve))
+ assert.equal(p.exports[0][1],'docx');assert.equal(p.exportFile.value.extension,'docx')
 })

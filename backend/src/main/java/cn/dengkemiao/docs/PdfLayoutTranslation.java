@@ -214,13 +214,27 @@ public class PdfLayoutTranslation {
             float half=first.y<110?layout.width*.25f:Math.min(center-35,layout.width-35-center);
             slots=List.of(new Line(first.text,center-half,first.y,half*2,first.size,first.color,first.font,first.bold,first.alpha));right=center+half;
         }
+        // Use the paragraph container, not just the original glyph bounds. Each
+        // original baseline must remain clear of neighbouring columns and images.
+        if(center<0) {
+            float freeRight=layout.width-Math.max(35,first.size);
+            for(var line:region.lines) {
+                for(var other:layout.lines) {
+                    if(region.lines.contains(other))continue;
+                    boolean sameBand=other.y-other.size<line.y+line.size*.3f && other.y+other.size*.3f>line.y-line.size;
+                    if(sameBand && other.x>=line.x+line.width-1)freeRight=Math.min(freeRight,other.x-3);
+                }
+                for(var image:layout.images)if(image.left>=line.x+line.width-1 && image.top<line.y+line.size*.3f && image.bottom>line.y-line.size)freeRight=Math.min(freeRight,image.left-3);
+            }
+            right=Math.max(right,freeRight);
+        }
         List<String> rows=null;float scale=1;
         for(int attempt=0;attempt<=70;attempt++) {
             scale=1-attempt*.005f;
             rows=wrap(text,slots,right,scale,measure);
             if(rows!=null)break;
         }
-        if(rows==null)throw new ApiError(422,"第"+(region.page+1)+"页译文放不下原文字区域，未导出错版PDF；请拆分段落或调整文档");
+        if(rows==null)throw new ApiError(422,"第"+(region.page+1)+"页第"+(region.id+1)+"文字块译文放不下原文字区域，未导出错版PDF");
         if(scale<.995f)warnings.add("部分译文为适应原文字区域做了字宽调整，未增加页面。");
         for(int i=0;i<rows.size();i++) {
             if(rows.get(i).isBlank())continue;
@@ -246,7 +260,20 @@ public class PdfLayoutTranslation {
             var row=new StringBuilder();double available=(right-line.x)/scale;
             while(pos<remaining.size()) {
                 String token=remaining.get(pos),separator=row.isEmpty()?"":(isCjk(token)||isCjk(remaining.get(pos-1)))?"":" ";
-                if(width.applyAsDouble(row+separator+token)>available)break;
+                if(width.applyAsDouble(row+separator+token)>available) {
+                    // A URL or long compound word may exceed every slot. Break
+                    // only at Unicode code-point boundaries, retaining every glyph.
+                    if(row.isEmpty()) {
+                        int end=0;
+                        while(end<token.length()) {
+                            int next=end+Character.charCount(token.codePointAt(end));
+                            if(width.applyAsDouble(token.substring(0,next))>available)break;
+                            end=next;
+                        }
+                        if(end>0){row.append(token,0,end);remaining.set(pos,token.substring(end));}
+                    }
+                    break;
+                }
                 row.append(separator).append(token);pos++;
             }
             rows.add(row.toString());

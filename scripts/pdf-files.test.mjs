@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 let source = await readFile(new URL('../frontend/src/lib/pdf-api.js', import.meta.url), 'utf8')
 source = source.replace("import { baseURL } from './api'", "const baseURL = 'https://test.invalid'")
 source = source.replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
-const { openSavedPdf, savePdf } = await import('data:text/javascript,' + encodeURIComponent(source))
+const { openSavedPdf, savePdf, shareSavedFile, saveFileToPhone } = await import('data:text/javascript,' + encodeURIComponent(source))
 const file = { path: '/test/result.zip', name: 'result.zip', extension: 'zip' }
 test('translated text files use sharing because WeChat openDocument does not support txt',async()=>{
  let shared=false
@@ -60,4 +60,33 @@ test('expired fallback response is never saved as a ZIP', async () => {
   globalThis.uni = { getStorageSync: () => 'test-token', downloadFile(options) { options.fail({}) }, request(options) { options.success({ statusCode: 410, data: new ArrayBuffer(0) }) } }
   try { await assert.rejects(savePdf({ id: 'expired-job', extension: 'zip' }), /临时文件已清理/) }
   finally { globalThis.wx = oldWx; globalThis.uni = oldUni }
+})
+
+
+test('PDF forwarding opens the native friend chooser directly', async()=>{
+ let options
+ const pending=shareSavedFile({...file,extension:'pdf'}, {shareFileMessage(o){options=o;o.success({})}})
+ assert.equal(options.filePath,file.path);assert.equal(options.fileName,file.name);await pending
+})
+test('local saving invokes the native disk dialog and preserves cancellation',async()=>{
+ let called=false
+ await saveFileToPhone(file,{saveFileToDisk(o){called=true;o.success({})},canIUse:()=>true})
+ assert.equal(called,true)
+ await assert.rejects(saveFileToPhone(file,{saveFileToDisk(o){o.fail({errMsg:'cancel'})}}),e=>e.cancelled)
+})
+test('unsupported phone saving explains the alternative without reporting a saved file',async()=>{
+ const previous=globalThis.uni;let message
+ globalThis.uni={showModal(o){message=o}}
+ try{const result=await saveFileToPhone(file,{});assert.equal(result.unsupported,true);assert.ok(message.content.includes('文件传输助手'))}
+ finally{globalThis.uni=previous}
+})
+
+
+test('an exposed but unsupported disk API uses phone guidance instead of an update-WeChat error',async()=>{
+ const old=globalThis.uni;let modal
+ globalThis.uni={showModal(o){modal=o}}
+ try{
+  const result=await saveFileToPhone({...file,extension:'docx'},{canIUse:()=>true,saveFileToDisk(o){o.fail({errMsg:'saveFileToDisk:fail not supported'})}})
+  assert.equal(result.unsupported,true);assert.ok(modal.content.includes('文件传输助手'));assert.equal(modal.confirmText,'预览文件')
+ }finally{globalThis.uni=old}
 })

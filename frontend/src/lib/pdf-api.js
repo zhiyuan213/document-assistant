@@ -124,6 +124,37 @@ export function openSavedPdf(file, platform) {
   // #endif
 }
 
+// Native file dialogs must start directly from a user tap.
+export function shareSavedFile(file, platform) {
+ // #ifdef MP-WEIXIN
+ const native=platform||wx
+ return new Promise((resolve,reject)=>{
+  if(typeof native.shareFileMessage!=='function'){reject(new Error('当前微信版本不支持转发文件，请更新微信'));return}
+  native.shareFileMessage({filePath:file.path,fileName:file.name,success:resolve,fail:e=>reject(fileError('转发文件',e))})
+ })
+ // #endif
+}
+export function saveFileToPhone(file, platform) {
+ // #ifdef MP-WEIXIN
+ const native=platform||wx
+ return new Promise((resolve,reject)=>{
+  const explain=()=>{
+   uni.showModal({title:'手机文件保存方式',content:'当前微信环境不支持直接下载到手机文件夹。可点击“转发给微信好友”，发送到文件传输助手后打开，再使用文件菜单中提供的保存功能。也可以先预览文件。',confirmText:'预览文件',cancelText:'知道了',success:r=>{
+    if(r.confirm && ['pdf','docx'].includes(file.extension))openSavedPdf(file,native).catch(e=>{if(!e.cancelled)uni.showModal({title:'无法预览',content:e.message,showCancel:false})})
+   }})
+   resolve({unsupported:true})
+  }
+  if(typeof native.saveFileToDisk==='function' && (!native.canIUse || native.canIUse('saveFileToDisk'))){
+   native.saveFileToDisk({filePath:file.path,success:resolve,fail:e=>{
+    const message=String(e?.errMsg||'').toLowerCase()
+    if(/not support|not available|not implemented|only support/.test(message))explain()
+    else reject(fileError('保存文件',e))
+   }})
+  }else explain()
+ })
+ // #endif
+}
+
 export async function exportAiReport(content, format, translationJobId = '') {
  await visitor()
  const translated=Boolean(translationJobId)
