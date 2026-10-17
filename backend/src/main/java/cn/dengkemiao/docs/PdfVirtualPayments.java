@@ -82,7 +82,7 @@ public class PdfVirtualPayments {
     }
     private void grant(Map<String,Object> order){
         String owner=order.get("visitor_id").toString(),id=order.get("id").toString();
-        if("ai-topup".equals(order.get("package_id"))){if(((Number)order.get("credits")).longValue()!=PdfAiCredits.TOPUP_CREDITS)throw new SecurityException("invalid grant");credits.grantTopup(owner,PdfAiCredits.TOPUP_CREDITS);return;}
+        if("ai-topup".equals(order.get("package_id"))){credits.grantTopup(owner,PdfAiCredits.topupGrant(((Number)order.get("credits")).longValue()));return;}
         if(!"monthly".equals(order.get("package_id")))throw new SecurityException("unknown package");
         var members=db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",owner);LocalDateTime start=now();
         if(!members.isEmpty()){var previous=JdbcDates.local(members.get(0).get("expires_at"));if(previous.isAfter(start))start=previous;}
@@ -92,7 +92,7 @@ public class PdfVirtualPayments {
     }
     private void revoke(Map<String,Object> order,int difference){
         String owner=order.get("visitor_id").toString();int amount=number(order,"amount_fen");credits.snapshot(owner);
-        if("ai-topup".equals(order.get("package_id"))){long previous=number(order,"refunded_fen");long delta=PdfAiCredits.TOPUP_CREDITS*(previous+difference)/amount-PdfAiCredits.TOPUP_CREDITS*previous/amount;db.update("UPDATE pdf_ai_wallet SET topup_balance=topup_balance-? WHERE visitor_id=?",delta,owner);return;}
+        if("ai-topup".equals(order.get("package_id"))){long previous=number(order,"refunded_fen");long grant=PdfAiCredits.topupGrant(((Number)order.get("credits")).longValue());long delta=grant*(previous+difference)/amount-grant*previous/amount;db.update("UPDATE pdf_ai_wallet SET topup_balance=topup_balance-? WHERE visitor_id=?",delta,owner);return;}
         if(order.get("member_start")==null||order.get("member_end")==null)return;
         LocalDateTime start=JdbcDates.local(order.get("member_start")),end=JdbcDates.local(order.get("member_end")),now=now();
         // Revoke only the not-yet-consumed portion; later valid renewals remain valid.

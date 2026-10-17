@@ -11,8 +11,13 @@ import java.util.*;
 
 @Service
 public class PdfAiCredits {
-    public static final long TOPUP_CREDITS = 2_000_000L;
+    public static final long TOPUP_CREDITS = 1_000_000L;
     public static final int TOPUP_PRICE_FEN = 990;
+    // Orders retain the package size that was sold at creation time.
+    public static long topupGrant(long amount) {
+        if (amount!=TOPUP_CREDITS && amount!=2_000_000L) throw new SecurityException("invalid topup grant");
+        return amount;
+    }
     private final JdbcTemplate db;
     private final TransactionTemplate tx;
     @Value("${PDF_AI_MONTHLY_TOKEN_CREDITS:2000000}") private long monthlyCredits;

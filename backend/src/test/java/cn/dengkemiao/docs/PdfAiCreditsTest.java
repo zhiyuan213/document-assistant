@@ -215,7 +215,7 @@ class PdfAiCreditsTest {
                 .content("{\"packageId\":\"ai-topup\",\"amountFen\":1,\"credits\":99999999}"))
                 .andExpect(status().isOk());
         var order=db.queryForMap("SELECT amount_fen,credits,status FROM pdf_purchase WHERE visitor_id=?",id);
-        assertEquals(990,((Number)order.get("amount_fen")).intValue());assertEquals(2000000,((Number)order.get("credits")).intValue());
+        assertEquals(990,((Number)order.get("amount_fen")).intValue());assertEquals(1000000,((Number)order.get("credits")).intValue());
         assertEquals("pending",order.get("status"));assertEquals(0,credits.snapshot(id).topup());
         mvc.perform(post("/api/pdf/purchase").header("Authorization","Bearer "+token).contentType("application/json").content("{\"packageId\":\"invalid\"}"))
                 .andExpect(status().isBadRequest());

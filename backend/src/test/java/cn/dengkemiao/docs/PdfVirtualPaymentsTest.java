@@ -48,19 +48,27 @@ class PdfVirtualPaymentsTest {
     @Test void clientCannotGrantCreditsAndRepeatedCallbacksGrantOnlyOnce()throws Exception {
         String id=purchase("ai-topup"),owner=owner(id);assertEquals(0,credits.snapshot(owner).topup());
         respond(id,1,0);callback(delivery(id),500);assertEquals(0,credits.snapshot(owner).topup());
-        respond(id,2,0);callback(delivery(id),200);callback(delivery(id),200);assertEquals(2000000,credits.snapshot(owner).topup());
-        var tampered=delivery(id).deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)tampered.path("GoodsInfo")).put("ProductId","wrong");callback(tampered,500);assertEquals(2000000,credits.snapshot(owner).topup());
+        respond(id,2,0);callback(delivery(id),200);callback(delivery(id),200);assertEquals(1000000,credits.snapshot(owner).topup());
+        var tampered=delivery(id).deepCopy();((com.fasterxml.jackson.databind.node.ObjectNode)tampered.path("GoodsInfo")).put("ProductId","wrong");callback(tampered,500);assertEquals(1000000,credits.snapshot(owner).topup());
         String stranger=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();mvc.perform(get("/api/pdf/purchase/"+id).header("Authorization","Bearer "+stranger)).andExpect(status().isNotFound());
     }
     @Test void queryRecoveryAndRefundAreIdempotentIncludingConsumedCredits()throws Exception {
         String id=purchase("ai-topup"),owner=owner(id);respond(id,2,0);db.update("UPDATE pdf_virtual_order SET next_check_at=? WHERE purchase_id=?",Timestamp.valueOf(PdfAiCredits.now().minusMinutes(1)),id);
-        mvc.perform(get("/api/pdf/purchase/"+id).header("Authorization","Bearer "+token)).andExpect(jsonPath("$.paid").value(true));assertEquals(2000000,credits.snapshot(owner).topup());credits.reserve(owner,500000);
+        mvc.perform(get("/api/pdf/purchase/"+id).header("Authorization","Bearer "+token)).andExpect(jsonPath("$.paid").value(true));assertEquals(1000000,credits.snapshot(owner).topup());credits.reserve(owner,500000);
         respond(id,8,990);callback(refund(id,990),200);callback(refund(id,990),200);assertEquals(-500000,credits.snapshot(owner).topup());assertEquals(0,credits.snapshot(owner).total());assertEquals("refunded",order(id).get("status"));
-        String next=purchase("ai-topup");respond(next,2,0);callback(delivery(next),200);assertEquals(1500000,credits.snapshot(owner).topup());
+        String next=purchase("ai-topup");respond(next,2,0);callback(delivery(next),200);assertEquals(500000,credits.snapshot(owner).topup());
     }
     @Test void partialRefundAndFullRefundBeforeDeliveryNeverOvergrant()throws Exception {
-        String partial=purchase("ai-topup"),owner=owner(partial);respond(partial,4,99);callback(refund(partial,99),200);assertEquals(1800000,credits.snapshot(owner).topup());callback(refund(partial,99),200);assertEquals(1800000,credits.snapshot(owner).topup());
-        String full=purchase("ai-topup");respond(full,8,990);callback(refund(full,990),200);assertEquals(1800000,credits.snapshot(owner).topup());
+        String partial=purchase("ai-topup"),owner=owner(partial);respond(partial,4,99);callback(refund(partial,99),200);assertEquals(900000,credits.snapshot(owner).topup());callback(refund(partial,99),200);assertEquals(900000,credits.snapshot(owner).topup());
+        String full=purchase("ai-topup");respond(full,8,990);callback(refund(full,990),200);assertEquals(900000,credits.snapshot(owner).topup());
+    }
+    @Test void legacyTwoMillionOrderKeepsItsOriginalGrantAndRefundAmount()throws Exception {
+        String id=purchase("ai-topup"),owner=owner(id);
+        db.update("UPDATE pdf_purchase SET credits=2000000 WHERE id=?",id);
+        respond(id,2,0);callback(delivery(id),200);callback(delivery(id),200);
+        assertEquals(2000000,credits.snapshot(owner).topup());
+        respond(id,4,99);callback(refund(id,99),200);assertEquals(1800000,credits.snapshot(owner).topup());
+        respond(id,8,990);callback(refund(id,990),200);assertEquals(0,credits.snapshot(owner).topup());
     }
     @Test void mismatchedAmountsAndEnvironmentsNeverDeliver()throws Exception {
         String id=purchase("monthly");var wrong=(com.fasterxml.jackson.databind.node.ObjectNode)receipt(id,2,0);wrong.put("order_fee",989);when(pay.query(anyString(),anyString(),anyInt(),anyString())).thenReturn(wrong);callback(delivery(id),500);assertFalse(credits.snapshot(owner(id)).vip());
@@ -76,7 +84,7 @@ class PdfVirtualPaymentsTest {
     @Test void concurrentNotificationsAndQueryThrottlingDoNotDuplicateBenefits()throws Exception {
         String id=purchase("ai-topup");respond(id,2,0);var executor=Executors.newFixedThreadPool(3);
         try{var futures=new ArrayList<Future<?>>();for(int i=0;i<3;i++)futures.add(executor.submit(()->payments.notification(delivery(id))));for(var task:futures)task.get(10,TimeUnit.SECONDS);}finally{executor.shutdownNow();}
-        assertEquals(2000000,credits.snapshot(owner(id)).topup());
+        assertEquals(1000000,credits.snapshot(owner(id)).topup());
         clearInvocations(pay);for(int i=0;i<10;i++)payments.refresh(id);verify(pay,never()).query(anyString(),anyString(),anyInt(),anyString());
     }
     @Test void cloudrunPathProbeAndForwardedEventAreSupported()throws Exception {
@@ -86,10 +94,10 @@ class PdfVirtualPaymentsTest {
         mvc.perform(post("/api/pdf/virtual/cloudrun-notify").contentType("application/json").content(json.writeValueAsString(delivery(id)))).andExpect(status().isForbidden());
         doReturn(delivery(id)).when(pay).cloudrunMessage(anyString(),eq("wx"),any());
         mvc.perform(post("/api/pdf/virtual/cloudrun-notify").header("x-wx-source","wx").contentType("application/json").content(json.writeValueAsString(delivery(id)))).andExpect(status().isOk());
-        assertEquals(2000000,credits.snapshot(owner(id)).topup());
+        assertEquals(1000000,credits.snapshot(owner(id)).topup());
         respond(id,1,0);String unpaid=purchase("ai-topup");respond(unpaid,1,0);doReturn(delivery(unpaid)).when(pay).cloudrunMessage(anyString(),eq("wx"),any());
         mvc.perform(post("/api/pdf/virtual/cloudrun-notify").header("x-wx-source","wx").contentType("application/json").content(json.writeValueAsString(delivery(unpaid)))).andExpect(status().isForbidden());
-        assertEquals(2000000,credits.snapshot(owner(id)).topup());
+        assertEquals(1000000,credits.snapshot(owner(id)).topup());
     }
     @Test void safeCallbackUrlCanBeVerified()throws Exception {
         String timestamp=""+Instant.now().getEpochSecond();mvc.perform(get("/api/pdf/virtual/notify").param("timestamp",timestamp).param("nonce","nonce").param("signature",WechatVirtualPaymentTest.signature(timestamp,"nonce")).param("echostr","12345")).andExpect(status().isOk()).andExpect(content().string("12345"));

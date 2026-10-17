@@ -119,7 +119,7 @@ public class PdfToolController {
         boolean topup=packageId.equals("ai-topup");int amount=topup?PdfAiCredits.TOPUP_PRICE_FEN:Math.max(990,monthlyPriceFen);
         String orderId=UUID.randomUUID().toString(),tradeNo="DK"+UUID.randomUUID().toString().replace("-","").substring(0,30);
         db.update("INSERT INTO pdf_purchase(id,visitor_id,package_id,amount_fen,credits,status,out_trade_no) VALUES (?,?,?,?,?,'pending',?)",orderId,owner,packageId,amount,topup?PdfAiCredits.TOPUP_CREDITS:1,tradeNo);
-        var pay=wechatPay.createMiniProgramOrder(tradeNo,openids.get(0),amount,topup?"登科喵 AI 加油包（200万额度）":"登科喵 AI 月卡");var result=new HashMap<String,Object>(pay);result.put("orderId",orderId);result.put("paymentProvider","wechat");return result;
+        var pay=wechatPay.createMiniProgramOrder(tradeNo,openids.get(0),amount,topup?"登科喵 AI 加油包（100万额度）":"登科喵 AI 月卡");var result=new HashMap<String,Object>(pay);result.put("orderId",orderId);result.put("paymentProvider","wechat");return result;
     }
     @GetMapping("/purchase/{id}") public Map<String,Object> purchaseState(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header){
         String owner=aiCredits.owner(visitor(header));var rows=db.queryForList("SELECT status,paid_at FROM pdf_purchase WHERE id=? AND visitor_id=?",id,owner);
@@ -146,8 +146,8 @@ public class PdfToolController {
                 LocalDateTime now=LocalDateTime.now(ZoneId.of("Asia/Shanghai"));String visitorId=aiCredits.owner(order.get("visitor_id").toString());
                 db.queryForList("SELECT id FROM pdf_visitor WHERE id=? FOR UPDATE",visitorId);
                 if("ai-topup".equals(order.get("package_id"))) {
-                    if(((Number)order.get("credits")).longValue()!=PdfAiCredits.TOPUP_CREDITS || total!=PdfAiCredits.TOPUP_PRICE_FEN)throw new SecurityException("invalid topup");
-                    aiCredits.grantTopup(visitorId,PdfAiCredits.TOPUP_CREDITS);
+                    if(total!=PdfAiCredits.TOPUP_PRICE_FEN)throw new SecurityException("invalid topup");
+                    aiCredits.grantTopup(visitorId,PdfAiCredits.topupGrant(((Number)order.get("credits")).longValue()));
                 } else if("monthly".equals(order.get("package_id"))) {
                     var members=db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",visitorId);
                     LocalDateTime previous=members.isEmpty()?now:JdbcDates.local(members.get(0).get("expires_at"));
