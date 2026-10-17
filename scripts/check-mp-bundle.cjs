@@ -8,12 +8,10 @@ for (const page of config.pages) {
     if (!fs.existsSync(path.join(root, page + '.' + ext))) failures.push('Missing page: ' + page + '.' + ext)
   }
 }
-// WeChat's hidden attribute can be overridden by display:grid/flex styles.
-// Accordion panels must use conditional rendering to stay mutually exclusive.
-const aiWxml = fs.readFileSync(path.join(root, 'pages/pdf/ai.wxml'), 'utf8')
-for (const panel of aiWxml.matchAll(/<view\b[^>]*class="[^"]*(?:ui-tool-grid|answer ui-card)[^"]*"[^>]*>/g)) {
-  if (/\bhidden=/.test(panel[0]) || !/wx:if=/.test(panel[0])) failures.push('AI accordion panel must use wx:if rather than hidden')
-}
+// Animated accordions must unmount their closed wrappers; hidden alone can
+// be overridden by layout styles on mini-program view elements.
+const stepPanel = fs.readFileSync(path.join(root, 'components/PdfStepPanel.wxml'), 'utf8')
+if (!/wx:if=/.test(stepPanel) || /\shidden=/.test(stepPanel)) failures.push('AI step panel must use conditional rendering, not hidden')
 let checked = 0
 function scan(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

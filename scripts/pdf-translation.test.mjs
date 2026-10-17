@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import vm from 'node:vm'
 const source=(await readFile(new URL('../frontend/src/pages/pdf/ai.vue',import.meta.url),'utf8')).split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm,'')
-function page({lostSubmit=false,restore=false,taskError,statusLoader,exporter,delivery=async()=>({})}={}){
+function page({initialMode='translate',lostSubmit=false,restore=false,taskError,statusLoader,exporter,delivery=async()=>({})}={}){
  const storage=new Map(restore?[['pdf-translation-request-v1','original-key']]:[]),calls=[],exports=[],toasts=[];let polls=0,pick
  const context={rememberExport:(file,details)=>file?{...file,...details}:file,exportExpiry:()=>Date.now()+1800000,ref:value=>({value}),computed:fn=>({get value(){return fn()}}),watch(){},onLoad(){},onShow(){},onTabItemTap(){},headerPadding(){},setTimeout:fn=>queueMicrotask(fn),
   wx:{chooseMessageFile(options){pick=options}},uni:{getStorageSync:key=>storage.get(key),setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),chooseFile(){},showToast(v){toasts.push(v.title)},navigateTo(){},switchTab(){},setClipboardData(){}},
@@ -13,7 +13,7 @@ function page({lostSubmit=false,restore=false,taskError,statusLoader,exporter,de
   exportAiReport:async(...args)=>{exports.push(args);if(exporter)return exporter(...args);return {path:'/test/result.'+args[1],extension:args[1]}},shareSavedFile:delivery,saveFileToPhone:delivery,openSavedPdf:async()=>{}
  }
  const p=vm.runInNewContext(source+'\n({activeStep,toggleStep,selectMode,removeFile,chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
- p.mode.value='translate';p.selected.value=[{path:'/old.pdf',name:'old.pdf',size:20}]
+ p.mode.value=initialMode;p.selected.value=[{path:'/old.pdf',name:'old.pdf',size:20}]
  return {...p,storage,calls,exports,toasts,pick:()=>pick}
 }
 test('an existing PDF can be replaced without removing it first; cancelled and oversize selections preserve it',()=>{
@@ -109,4 +109,11 @@ test('accordion advances through translation steps and lets users reopen earlier
 test('summary file selection closes the upload step without opening a language step',()=>{
  const p=page();p.selectMode('summary');p.chooseFiles();p.pick().success({tempFiles:[{path:'/new.pdf',name:'new.pdf',size:30}]})
  assert.equal(p.activeStep.value,'');assert.equal(p.selected.value.length,1)
+})
+
+test('AI function is initially unselected and later steps cannot bypass the choice',()=>{
+ const p=page({initialMode:''});assert.equal(p.mode.value,'');assert.equal(p.activeStep.value,'mode')
+ p.toggleStep('files');assert.equal(p.activeStep.value,'mode')
+ p.chooseFiles();assert.equal(p.pick(),undefined)
+ p.selectMode('translate');assert.equal(p.mode.value,'translate');assert.equal(p.activeStep.value,'files')
 })

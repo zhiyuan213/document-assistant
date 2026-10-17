@@ -10,21 +10,21 @@
   <view v-else-if="!status.canUse" class="ui-notice">额度不足，开通月卡或购买加油包后即可使用。<text class="notice-link" @click="openCredits">查看方案 ›</text></view>
   <view v-else class="quota-card"><view><text>今日免费额度</text><view>{{formatCredits(status.freeRemainingTokenCredits)}}</view></view><view><text>会员月额度</text><view>{{formatCredits(status.monthlyRemainingTokenCredits)}}</view></view><view><text>加油包额度</text><view>{{formatCredits(status.topupRemainingTokenCredits)}}</view></view><text class="quota-foot">今日还可处理 {{status.dailyRemaining}} 次{{status.testMode?' · 测试模式免费体验':''}}</text></view>
   <button class="step-header" :aria-expanded="activeStep==='mode'" @click="toggleStep('mode')"><text class="step-title">01 选择 AI 功能</text><text v-if="activeStep!=='mode'" class="step-summary">{{current.title}}</text><text class="step-arrow">{{activeStep==='mode'?'−':'＋'}}</text></button>
-  <view v-if="activeStep==='mode'" class="ui-tool-grid"><PdfToolTile v-for="(item,index) in modes" :key="item.id" :label="modeLabels[index]" :color="modeColors[index]" :title="item.title" :caption="item.brief" :selected="mode===item.id" :disabled="busy || translationPending" @click="selectMode(item.id)"/></view>
+  <PdfStepPanel :open="activeStep==='mode'"><view class="ui-tool-grid"><PdfToolTile v-for="(item,index) in modes" :key="item.id" :label="modeLabels[index]" :color="modeColors[index]" :title="item.title" :caption="item.brief" :selected="mode===item.id" :disabled="busy || translationPending" @click="selectMode(item.id)"/></view></PdfStepPanel>
   <button class="step-header" :aria-expanded="activeStep==='files'" @click="toggleStep('files')"><text class="step-title">02 添加 PDF 文件</text><text v-if="activeStep!=='files'" class="step-summary">{{selected[0]?.name||'未选择'}}</text><text class="step-arrow">{{activeStep==='files'?'−':'＋'}}</text></button>
-  <view v-if="activeStep==='files'">
+  <PdfStepPanel :open="activeStep==='files'">
   <view class="picker" @click="chooseFiles"><view class="picker-icon">＋</view><view>{{selected.length?'更换 PDF':pickerText}}</view><text>每次选择一个 PDF · 单个不超过 20MB</text></view>
   <view v-for="(file,index) in selected" :key="file.path" class="file"><view class="file-label">PDF</view><text>{{file.name}}</text><button class="file-remove" :disabled="busy || translationPending" aria-label="移除文件" @click="removeFile(index)">×</button></view>
-  </view>
+  </PdfStepPanel>
   <button v-if="mode==='translate'" class="step-header" :aria-expanded="activeStep==='language'" @click="toggleStep('language')"><text class="step-title">03 选择目标语言</text><text v-if="activeStep!=='language'" class="step-summary">{{languages[languageIndex].title}}</text><text class="step-arrow">{{activeStep==='language'?'−':'＋'}}</text></button>
-  <picker v-if="mode==='translate' && activeStep==='language'" :disabled="busy || translationPending" :range="languages" range-key="title" :value="languageIndex" @change="languageIndex=Number($event.detail.value)"><view class="ui-input language-picker">{{languages[languageIndex].title}} <text>点击选择 ›</text></view></picker>
-  <button v-if="(selected.length && !answer) || busy || translationPending" class="ui-button process-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':current.action}}</button>
+  <PdfStepPanel v-if="mode==='translate'" :open="activeStep==='language'"><picker :disabled="busy || translationPending" :range="languages" range-key="title" :value="languageIndex" @change="languageIndex=Number($event.detail.value)"><view class="ui-input language-picker">{{languages[languageIndex].title}} <text>点击选择 ›</text></view></picker></PdfStepPanel>
+  <button v-if="(mode && selected.length && !answer) || busy || translationPending" class="ui-button process-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':current.action}}</button>
   <view v-if="error" class="error" role="alert">{{error}}</view>
   <button v-if="answer" class="step-header" :aria-expanded="activeStep==='result'" @click="toggleStep('result')"><text class="step-title">{{mode==='translate'?'04 翻译结果':'03 总结结果'}}</text><text class="step-arrow">{{activeStep==='result'?'−':'＋'}}</text></button>
-  <view v-if="answer && activeStep==='result'" class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF</button></view>
+  <PdfStepPanel v-if="answer" :open="activeStep==='result'"><view class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF</button></view>
    <view v-if="pdfUnavailable" class="ui-notice">译文超出原文字区域或字体无法还原，本次未生成保留版式的 PDF，可选择 Word。</view>
    <view class="export-actions delivery-actions"><button class="ui-button" :disabled="exporting" @click="deliverReport">{{exporting?'正在准备文件…':'转发保存'}}</button></view>
-  </view>
+  </view></PdfStepPanel>
   <PdfAiBilling v-if="!status.testMode" />
  </view>
 </template>
@@ -35,13 +35,14 @@ import {rememberExport,exportExpiry} from '../../lib/pdf-export-history'
 import PdfAiBilling from '../../components/pdf-ai-billing.vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import PdfToolTile from '../../components/PdfToolTile.vue'
+import PdfStepPanel from '../../components/PdfStepPanel.vue'
 import {headerPadding} from '../../lib/layout'
-import {onTabItemTap,onLoad,onShow} from '@dcloudio/uni-app'
+import {onTabItemTap,onShow} from '@dcloudio/uni-app'
 import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile} from '../../lib/pdf-api'
 
 onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const activeStep=ref('mode')
-function toggleStep(step){activeStep.value=activeStep.value===step?'':step}
+function toggleStep(step){if(step!=='mode'&&!mode.value){activeStep.value='mode';return}activeStep.value=activeStep.value===step?'':step}
 const modeColors=['#5875df','#388bcb'],modeLabels=['总','译']
 const modes=[
  {id:'summary',title:'AI 总结',brief:'重点 · 结论 · 待办',action:'生成总结报告'},
@@ -51,7 +52,7 @@ const languages=[{id:'zh-CN',title:'简体中文'},{id:'zh-TW',title:'繁体中�
 const languageIndex=ref(0),exporting=ref(false),exportFile=ref(null)
 const translationJob=ref(''),translationWarnings=ref([]),translationPending=ref(false)
 const translationKey='pdf-translation-job-v1',translationRequestKey='pdf-translation-request-v1'
-const mode=ref('summary'),selected=ref([]),page=ref('1'),answer=ref(''),error=ref(''),busy=ref(false),busyLabel=ref('正在处理…'),chargedCredits=ref(null),usageDetails=ref(null)
+const mode=ref(''),selected=ref([]),page=ref('1'),answer=ref(''),error=ref(''),busy=ref(false),busyLabel=ref('正在处理…'),chargedCredits=ref(null),usageDetails=ref(null)
 let resultExpiresAt=0
 const exportFormat=ref('pdf')
 const pdfUnavailable=computed(()=>mode.value==='translate' && usageDetails.value?.pdfAvailable===false)
@@ -60,14 +61,13 @@ let exportGeneration=0
 watch(answer,()=>{exportGeneration++;preparedFiles.clear();exportFile.value=null;exportFormat.value=pdfUnavailable.value?'docx':'pdf';if(answer.value&&miniProgram)exportReport(exportFormat.value)})
 const statusLoaded=ref(false),statusError=ref('')
 const status=ref({enabled:false,vip:false,testMode:false,canUse:false,freeRemainingTokenCredits:0,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0,dailyLimit:100,dailyRemaining:0,monthlyTokenCredits:2000000,usedTokenCredits:0,remainingTokenCredits:0})
-const current=computed(()=>modes.find(x=>x.id===mode.value)||modes[0])
+const current=computed(()=>modes.find(x=>x.id===mode.value)||{title:'未选择',action:'请选择 AI 功能'})
 let miniProgram=false
 // #ifdef MP-WEIXIN
 miniProgram=true
 // #endif
 const pickerText=computed(()=>miniProgram?'从微信聊天选择 PDF':'点击选择 PDF 文件')
 watch([mode,languageIndex],()=>{if(!busy.value&&!translationPending.value){answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}})
-onLoad(options=>{if(modes.some(item=>item.id===options?.mode))mode.value=options.mode})
 onShow(()=>{refreshStatus();if(!busy.value&&!answer.value&&(uni.getStorageSync(translationKey)||uni.getStorageSync(translationRequestKey)))resumeTranslation()})
 let statusRequestId=0
 async function refreshStatus(){
@@ -84,6 +84,7 @@ async function refreshStatus(){
 }
 function selectMode(id){if(busy.value||exporting.value||translationPending.value)return;activeStep.value='files';exportFile.value=null;mode.value=id;answer.value='';error.value='';translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);if(id!=='compare'&&selected.value.length>1)selected.value=selected.value.slice(0,1)}
 function chooseFiles(){
+ if(!mode.value){activeStep.value='mode';return}
  if(busy.value||exporting.value||translationPending.value)return
  const success=r=>{const files=(r.tempFiles||[]).map(f=>({path:f.path||f.tempFilePath,name:f.name||'document.pdf',size:f.size||0}));if(files.some(f=>f.size>20*1024*1024)){error.value='单个 PDF 不能超过20MB';return}if(!files.length)return;selected.value=files.slice(0,1);activeStep.value=mode.value==='translate'?'language':'';error.value='';answer.value='';exportFile.value=null;chargedCredits.value=null;usageDetails.value=null;translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
  // #ifdef H5
@@ -96,6 +97,7 @@ function chooseFiles(){
 function removeFile(index){if(busy.value||exporting.value||translationPending.value)return;selected.value.splice(index,1);activeStep.value='files';answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
 function primaryAction(){if(translationPending.value){resumeTranslation();return}if(!status.value.canUse){openCredits();return}run()}
 async function run(){
+ if(!mode.value){activeStep.value='mode';return}
  if(busy.value)return
  if(translationPending.value){resumeTranslation();return}
  error.value='';answer.value='';exportFile.value=null;chargedCredits.value=null;usageDetails.value=null
@@ -124,7 +126,7 @@ async function waitTranslation(id){
  throw new Error('任务仍在后台处理中，重新进入本页会自动恢复进度，请勿重复提交。')
 }
 async function resumeTranslation(){if(busy.value)return;let id=translationJob.value||uni.getStorageSync(translationKey);const requestId=uni.getStorageSync(translationRequestKey);if(!id&&!requestId)return;busy.value=true;mode.value='translate';translationPending.value=true;error.value=''
- try{if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}translationJob.value=id;applyResult(await waitTranslation(id))}catch(e){error.value=e.message;if(e.status===404){translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey);if(e.message==='请求路径不存在'){error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'}else if(id){error.value='';uni.removeStorageSync(translationRequestKey)}}}finally{await refreshStatus();busy.value=false}}
+ try{if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}translationJob.value=id;applyResult(await waitTranslation(id))}catch(e){error.value=e.message;if(e.status===404){translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey);if(e.message==='请求路径不存在'){error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'}else if(id){error.value='';uni.removeStorageSync(translationRequestKey);if(!selected.value.length){mode.value='';activeStep.value='mode'}}}}finally{await refreshStatus();busy.value=false}}
 function exportIdentity(){return JSON.stringify([exportGeneration,mode.value,translationJob.value,answer.value])}
 async function exportReport(format){
  if(!answer.value)return null
