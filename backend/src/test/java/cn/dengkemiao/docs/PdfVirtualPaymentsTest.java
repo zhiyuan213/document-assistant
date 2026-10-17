@@ -70,14 +70,23 @@ class PdfVirtualPaymentsTest {
         respond(id,4,99);callback(refund(id,99),200);assertEquals(1800000,credits.snapshot(owner).topup());
         respond(id,8,990);callback(refund(id,990),200);assertEquals(0,credits.snapshot(owner).topup());
     }
+    @Test void activeMemberCannotPurchaseMonthlyButCanPurchaseTopup()throws Exception {
+        String first=purchase("monthly"),owner=owner(first);respond(first,2,0);callback(delivery(first),200);
+        Long before=db.queryForObject("SELECT COUNT(*) FROM pdf_purchase WHERE visitor_id=?",Long.class,owner);
+        mvc.perform(post("/api/pdf/purchase").header("Authorization","Bearer "+token).contentType("application/json").content("{\"packageId\":\"monthly\",\"code\":\"test-code\"}")).andExpect(status().isConflict());
+        assertEquals(before,db.queryForObject("SELECT COUNT(*) FROM pdf_purchase WHERE visitor_id=?",Long.class,owner));
+        assertNotNull(purchase("ai-topup"));
+        db.update("UPDATE pdf_membership SET expires_at=? WHERE visitor_id=?",Timestamp.valueOf(PdfAiCredits.now().minusMinutes(1)),owner);
+        assertNotNull(purchase("monthly"));
+    }
     @Test void mismatchedAmountsAndEnvironmentsNeverDeliver()throws Exception {
         String id=purchase("monthly");var wrong=(com.fasterxml.jackson.databind.node.ObjectNode)receipt(id,2,0);wrong.put("order_fee",989);when(pay.query(anyString(),anyString(),anyInt(),anyString())).thenReturn(wrong);callback(delivery(id),500);assertFalse(credits.snapshot(owner(id)).vip());
         wrong.put("order_fee",990).put("env_type",2);callback(delivery(id),500);assertFalse(credits.snapshot(owner(id)).vip());
         mvc.perform(post("/api/pdf/virtual/notify").contentType("application/json").content(json.writeValueAsString(delivery(id)))).andExpect(status().is5xxServerError());
     }
     @Test void monthlyRenewalsAndRefundsPreserveOtherPurchasesAndConsumption()throws Exception {
-        String first=purchase("monthly"),owner=owner(first);respond(first,2,0);callback(delivery(first),200);credits.reserve(owner,1000);
-        String second=purchase("monthly");respond(second,2,0);callback(delivery(second),200);
+        String first=purchase("monthly"),second=purchase("monthly"),owner=owner(first);respond(first,2,0);callback(delivery(first),200);credits.reserve(owner,1000);
+        respond(second,2,0);callback(delivery(second),200);
         LocalDateTime two=db.queryForObject("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",Timestamp.class,owner).toLocalDateTime();assertEquals(1999000,credits.snapshot(owner).monthly());
         respond(second,8,990);callback(refund(second,990),200);var one=db.queryForObject("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",Timestamp.class,owner).toLocalDateTime();assertTrue(one.isBefore(two));assertEquals(1999000,credits.snapshot(owner).monthly());callback(refund(second,990),200);assertEquals(one,db.queryForObject("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",Timestamp.class,owner).toLocalDateTime());
     }

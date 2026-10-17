@@ -118,7 +118,11 @@ public class PdfToolController {
         if(!Set.of("monthly","ai-topup").contains(packageId))throw new ApiError(400,"请选择有效套餐");
         boolean topup=packageId.equals("ai-topup");int amount=topup?PdfAiCredits.TOPUP_PRICE_FEN:Math.max(990,monthlyPriceFen);
         String orderId=UUID.randomUUID().toString(),tradeNo="DK"+UUID.randomUUID().toString().replace("-","").substring(0,30);
-        db.update("INSERT INTO pdf_purchase(id,visitor_id,package_id,amount_fen,credits,status,out_trade_no) VALUES (?,?,?,?,?,'pending',?)",orderId,owner,packageId,amount,topup?PdfAiCredits.TOPUP_CREDITS:1,tradeNo);
+        tx.executeWithoutResult(s->{
+            db.queryForList("SELECT id FROM pdf_visitor WHERE id=? FOR UPDATE",owner);
+            if(!topup)aiCredits.requireMonthlyPurchaseAllowed(owner);
+    db.update("INSERT INTO pdf_purchase(id,visitor_id,package_id,amount_fen,credits,status,out_trade_no) VALUES (?,?,?,?,?,'pending',?)",orderId,owner,packageId,amount,topup?PdfAiCredits.TOPUP_CREDITS:1,tradeNo);
+        });
         var pay=wechatPay.createMiniProgramOrder(tradeNo,openids.get(0),amount,topup?"登科喵 AI 加油包（100万额度）":"登科喵 AI 月卡");var result=new HashMap<String,Object>(pay);result.put("orderId",orderId);result.put("paymentProvider","wechat");return result;
     }
     @GetMapping("/purchase/{id}") public Map<String,Object> purchaseState(@PathVariable String id,@RequestHeader(value="Authorization",required=false)String header){

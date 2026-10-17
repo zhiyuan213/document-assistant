@@ -235,6 +235,10 @@ class PdfAiCreditsTest {
         assertEquals("pending",order.get("status"));assertEquals(0,credits.snapshot(id).topup());
         mvc.perform(post("/api/pdf/purchase").header("Authorization","Bearer "+token).contentType("application/json").content("{\"packageId\":\"invalid\"}"))
                 .andExpect(status().isBadRequest());
+        db.update("INSERT INTO pdf_membership(visitor_id,expires_at) VALUES (?,?)",id,Timestamp.valueOf(PdfAiCredits.now().plusMonths(1)));
+        mvc.perform(post("/api/pdf/purchase").header("Authorization","Bearer "+token).contentType("application/json").content("{\"packageId\":\"monthly\"}")).andExpect(status().isConflict());
+        assertEquals(1L,db.queryForObject("SELECT COUNT(*) FROM pdf_purchase WHERE visitor_id=?",Long.class,id));
+        mvc.perform(post("/api/pdf/purchase").header("Authorization","Bearer "+token).contentType("application/json").content("{\"packageId\":\"ai-topup\"}")).andExpect(status().isOk());
     }
     @Test void serverTestModeBypassesBalanceWithoutChargingAndKeepsUsageLimits() throws Exception {
         String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).get("token").asText();

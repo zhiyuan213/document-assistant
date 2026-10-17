@@ -13,18 +13,18 @@ test('virtual payment receives only signed platform fields and never falls back'
  await assert.rejects(requestPdfPayment(parameters,{requestPayment(){legacy=true}}),/更新微信/);assert.equal(legacy,false)
  await assert.rejects(requestPdfPayment({...parameters,paySig:''},{requestVirtualPayment(){throw Error('must not call')}}),/参数不完整/)
 })
-function page({cancel=false,platform=true,confirmAfter=1,queryFails=false,cashierError=false}={}){
+function page({member=false,cancel=false,platform=true,confirmAfter=1,queryFails=false,cashierError=false}={}){
  const requests=[],modals=[],storage=new Map();let polls=0,onShow
  const context={ref:v=>({value:v}),computed:f=>({get value(){return f()}}),onShow:f=>{onShow=f},requestPdfPayment,setTimeout:f=>{queueMicrotask(f)},wx:{login(p){p.success({code:'fresh-login-code'})},...(platform?{requestVirtualPayment(p){cancel?p.fail({errMsg:'requestVirtualPayment:fail cancel'}):cashierError?p.fail({errMsg:'requestVirtualPayment:fail unknown'}):p.success({})}}:{})},uni:{getStorageSync:k=>storage.get(k),setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k),showModal:p=>modals.push(p),switchTab:()=>{}},pdfRequest:async(path,method,body)=>{
   requests.push({path,method,body})
-  if(path==='/quota')return {billingEnabled:true,paymentEnabled:true,paymentProvider:'virtual',wechatLoginEnabled:true,monthlyPriceFen:990,membership:{active:false}}
+  if(path==='/quota')return {billingEnabled:true,paymentEnabled:true,paymentProvider:'virtual',wechatLoginEnabled:true,monthlyPriceFen:990,membership:{active:member}}
   if(path==='/login')return {ok:true}
   if(path==='/ai/status')return {canUse:false,testMode:false,monthlyRemainingTokenCredits:0,topupRemainingTokenCredits:0}
   if(path==='/purchase')return parameters
   if(path==='/purchase/owned-order'){if(queryFails)throw Error('network');return {paid:++polls>=confirmAfter,status:polls>=confirmAfter?'paid':'pending'}}
   throw Error(path)
  }}
- const result=vm.runInNewContext(pageSource+'\n({buy,refresh,checkPending,pendingOrder,purchasing})',context)
+ const result=vm.runInNewContext(pageSource+'\n({buy,refresh,checkPending,pendingOrder,purchasing,selectedPackage,selectPackage})',context)
  return {...result,requests,modals,storage,show:()=>onShow()}
 }
 test('fresh login code goes to server purchase and success waits for server confirmation',async()=>{
@@ -47,4 +47,11 @@ test('cashier errors still reconcile the existing order before reporting a resul
  assert.equal(p.pendingOrder.value,null)
  await p.buy('monthly');assert.equal(p.pendingOrder.value,null)
  assert.equal(p.modals.at(-1).title,'购买成功')
+})
+
+test('active membership blocks another monthly purchase but permits topup purchases',async()=>{
+ const p=page({member:true});await p.refresh();assert.equal(p.selectedPackage.value,'ai-topup')
+ p.selectPackage('monthly');assert.equal(p.selectedPackage.value,'ai-topup')
+ p.requests.length=0;await p.buy('monthly');assert.equal(p.requests.some(r=>r.path==='/purchase'),false)
+ await p.buy('ai-topup');assert.equal(p.requests.find(r=>r.path==='/purchase').body.packageId,'ai-topup')
 })

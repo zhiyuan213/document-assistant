@@ -28,6 +28,7 @@ public class PdfVirtualPayments {
         int amount=990;var pay=wechat.parameters(trade,packageId,amount,session);
         tx.executeWithoutResult(s->{
             db.queryForList("SELECT id FROM pdf_visitor WHERE id=? FOR UPDATE",owner);
+            if(packageId.equals("monthly"))credits.requireMonthlyPurchaseAllowed(owner);
             Integer pending=db.queryForObject("SELECT COUNT(*) FROM pdf_purchase WHERE visitor_id=? AND status='pending' AND created_at>?",Integer.class,owner,Timestamp.valueOf(now().minusMinutes(30)));
             if(pending!=null&&pending>=10)throw new ApiError(429,"未完成订单较多，请稍后再试");
             db.update("INSERT INTO pdf_purchase(id,visitor_id,package_id,amount_fen,credits,status,out_trade_no) VALUES (?,?,?,?,?,'pending',?)",id,owner,packageId,amount,packageId.equals("ai-topup")?PdfAiCredits.TOPUP_CREDITS:1,trade);

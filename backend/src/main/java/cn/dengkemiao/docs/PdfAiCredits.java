@@ -74,6 +74,9 @@ public class PdfAiCredits {
         }
         return new Snapshot(vip, vip ? Math.max(0, monthlyCap()-used) : 0, topup, end, free, day);
     }
+    public void requireMonthlyPurchaseAllowed(String owner) {
+        if(snapshot(owner).vip())throw new ApiError(409,"月卡仍在有效期内，不能重复购买；额度不足可购买AI加油包");
+    }
     public Reservation reserve(String owner, long credits) {
         return tx.execute(s -> {
             Snapshot balance = load(owner);
