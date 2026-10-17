@@ -40,8 +40,8 @@ public class PdfAiCredits {
         db.update("INSERT INTO pdf_ai_wallet(visitor_id) VALUES (?) ON DUPLICATE KEY UPDATE visitor_id=VALUES(visitor_id)", owner);
         var row = db.queryForMap("SELECT * FROM pdf_ai_wallet WHERE visitor_id=?", owner);
         var memberships = db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?", owner);
-        LocalDateTime expiry = memberships.isEmpty() ? null : ((Timestamp) memberships.get(0).get("expires_at")).toLocalDateTime();
-        LocalDateTime end = row.get("period_end") == null ? null : ((Timestamp) row.get("period_end")).toLocalDateTime();
+        LocalDateTime expiry = memberships.isEmpty() ? null : JdbcDates.local( memberships.get(0).get("expires_at"));
+        LocalDateTime end = row.get("period_end") == null ? null : JdbcDates.local( row.get("period_end"));
         boolean vip = expiry != null && expiry.isAfter(now());
         long used = ((Number) row.get("monthly_used")).longValue();
         if (vip && end == null) {

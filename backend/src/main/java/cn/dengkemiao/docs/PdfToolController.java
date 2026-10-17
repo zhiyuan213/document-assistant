@@ -39,7 +39,7 @@ public class PdfToolController {
     static LocalDateTime monthEnd(LocalDateTime purchasedAt){return purchasedAt.plusMonths(1);}
     private Map<String,Object> membership(String id){
         var rows=db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",id);
-        LocalDateTime expires=rows.isEmpty()?null:((java.sql.Timestamp)rows.get(0).get("expires_at")).toLocalDateTime();
+        LocalDateTime expires=rows.isEmpty()?null:JdbcDates.local(rows.get(0).get("expires_at"));
         boolean active=expires!=null&&expires.isAfter(LocalDateTime.now(ZoneId.of("Asia/Shanghai")));
         var result=new HashMap<String,Object>();result.put("active",active);result.put("expiresAt",expires==null?null:expires.toString()+"+08:00");return result;
     }
@@ -150,7 +150,7 @@ public class PdfToolController {
                     aiCredits.grantTopup(visitorId,PdfAiCredits.TOPUP_CREDITS);
                 } else if("monthly".equals(order.get("package_id"))) {
                     var members=db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",visitorId);
-                    LocalDateTime previous=members.isEmpty()?now:((Timestamp)members.get(0).get("expires_at")).toLocalDateTime();
+                    LocalDateTime previous=members.isEmpty()?now:JdbcDates.local(members.get(0).get("expires_at"));
                     boolean renewing=previous.isAfter(now);
                     // Initialize the current period before extending an active membership.
                     if(renewing)aiCredits.snapshot(visitorId);

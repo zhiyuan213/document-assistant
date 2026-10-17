@@ -77,7 +77,7 @@ public class PdfVirtualPayments {
             if(refunded<amount&&state!=4){wechat.delivered(trade,env,offer);}
             db.update("UPDATE pdf_virtual_order SET delivered_confirmed=TRUE WHERE purchase_id=?",id);
         }else if(state==6){db.update("UPDATE pdf_purchase SET status='closed' WHERE id=? AND status='pending'",id);db.update("UPDATE pdf_virtual_order SET next_check_at=?,last_error=NULL WHERE purchase_id=?",Timestamp.valueOf(now().plusYears(10)),id);}
-        else if(state==0||state==1||state==7){db.update("UPDATE pdf_virtual_order SET next_check_at=?,last_error=NULL WHERE purchase_id=?",Timestamp.valueOf(now().plusMinutes(((Timestamp)stored.get("created_at")).toLocalDateTime().isBefore(now().minusHours(1))?60:5)),id);}
+        else if(state==0||state==1||state==7){db.update("UPDATE pdf_virtual_order SET next_check_at=?,last_error=NULL WHERE purchase_id=?",Timestamp.valueOf(now().plusMinutes(JdbcDates.local(stored.get("created_at")).isBefore(now().minusHours(1))?60:5)),id);}
         else throw new SecurityException("unrecognized payment status");
     }
     private void grant(Map<String,Object> order){
@@ -85,7 +85,7 @@ public class PdfVirtualPayments {
         if("ai-topup".equals(order.get("package_id"))){if(((Number)order.get("credits")).longValue()!=PdfAiCredits.TOPUP_CREDITS)throw new SecurityException("invalid grant");credits.grantTopup(owner,PdfAiCredits.TOPUP_CREDITS);return;}
         if(!"monthly".equals(order.get("package_id")))throw new SecurityException("unknown package");
         var members=db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",owner);LocalDateTime start=now();
-        if(!members.isEmpty()){var previous=((Timestamp)members.get(0).get("expires_at")).toLocalDateTime();if(previous.isAfter(start))start=previous;}
+        if(!members.isEmpty()){var previous=JdbcDates.local(members.get(0).get("expires_at"));if(previous.isAfter(start))start=previous;}
         boolean renewing=start.isAfter(now());if(renewing)credits.snapshot(owner);LocalDateTime end=start.plusMonths(1);
         db.update("INSERT INTO pdf_membership(visitor_id,expires_at) VALUES (?,?) ON DUPLICATE KEY UPDATE expires_at=VALUES(expires_at)",owner,Timestamp.valueOf(end));credits.activateMonth(owner,end,renewing);
         db.update("UPDATE pdf_virtual_order SET member_start=?,member_end=? WHERE purchase_id=?",Timestamp.valueOf(start),Timestamp.valueOf(end),id);
@@ -94,17 +94,17 @@ public class PdfVirtualPayments {
         String owner=order.get("visitor_id").toString();int amount=number(order,"amount_fen");credits.snapshot(owner);
         if("ai-topup".equals(order.get("package_id"))){long previous=number(order,"refunded_fen");long delta=PdfAiCredits.TOPUP_CREDITS*(previous+difference)/amount-PdfAiCredits.TOPUP_CREDITS*previous/amount;db.update("UPDATE pdf_ai_wallet SET topup_balance=topup_balance-? WHERE visitor_id=?",delta,owner);return;}
         if(order.get("member_start")==null||order.get("member_end")==null)return;
-        LocalDateTime start=((Timestamp)order.get("member_start")).toLocalDateTime(),end=((Timestamp)order.get("member_end")).toLocalDateTime(),now=now();
+        LocalDateTime start=JdbcDates.local(order.get("member_start")),end=JdbcDates.local(order.get("member_end")),now=now();
         // Revoke only the not-yet-consumed portion; later valid renewals remain valid.
         long available=Math.max(0,Duration.between(start.isAfter(now)?start:now,end).getSeconds());
         int outstanding=amount-number(order,"refunded_fen");long seconds=available*difference/outstanding;
         if(seconds==0)return;
         var rows=db.queryForList("SELECT expires_at FROM pdf_membership WHERE visitor_id=?",owner);if(rows.isEmpty())return;
-        LocalDateTime expiry=((Timestamp)rows.get(0).get("expires_at")).toLocalDateTime().minusSeconds(seconds);if(expiry.isBefore(now))expiry=now;
+        LocalDateTime expiry=JdbcDates.local(rows.get(0).get("expires_at")).minusSeconds(seconds);if(expiry.isBefore(now))expiry=now;
         db.update("UPDATE pdf_membership SET expires_at=? WHERE visitor_id=?",Timestamp.valueOf(expiry),owner);
         db.update("UPDATE pdf_ai_wallet SET period_end=CASE WHEN period_end>? THEN ? ELSE period_end END WHERE visitor_id=?",Timestamp.valueOf(expiry),Timestamp.valueOf(expiry),owner);
         var future=db.queryForList("SELECT v.purchase_id,v.member_start,v.member_end FROM pdf_virtual_order v JOIN pdf_purchase p ON p.id=v.purchase_id WHERE p.visitor_id=? AND v.member_start>=? AND v.purchase_id<>?",owner,Timestamp.valueOf(end),order.get("id"));
-        for(var next:future)db.update("UPDATE pdf_virtual_order SET member_start=?,member_end=? WHERE purchase_id=?",Timestamp.valueOf(((Timestamp)next.get("member_start")).toLocalDateTime().minusSeconds(seconds)),Timestamp.valueOf(((Timestamp)next.get("member_end")).toLocalDateTime().minusSeconds(seconds)),next.get("purchase_id"));
+        for(var next:future)db.update("UPDATE pdf_virtual_order SET member_start=?,member_end=? WHERE purchase_id=?",Timestamp.valueOf(JdbcDates.local(next.get("member_start")).minusSeconds(seconds)),Timestamp.valueOf(JdbcDates.local(next.get("member_end")).minusSeconds(seconds)),next.get("purchase_id"));
         db.update("UPDATE pdf_virtual_order SET member_end=? WHERE purchase_id=?",Timestamp.valueOf(end.minusSeconds(seconds)),order.get("id"));
     }
     public void notification(JsonNode event){
