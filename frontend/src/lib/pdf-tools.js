@@ -6,6 +6,7 @@ export const pdfTools = [
   { id: 'compress', title: 'PDF 压缩', label: '压', color: '#ff941a', hint: '优化 PDF 内图片；纯文字文档可能无法继续缩小。', accept: ['pdf'] },
   { id: 'images', title: '图片转 PDF', label: '图', color: '#02bfd0', hint: '将 JPG、PNG 图片按顺序生成 PDF。', accept: ['jpg', 'jpeg', 'png'] },
   { id: 'pdf-images', title: 'PDF 转图片', label: 'IMG', color: '#ffa114', hint: '逐页生成 JPG 或 PNG，打包 ZIP 下载，最多 50 页。', accept: ['pdf'] },
+  { id: 'pdf-txt', title: 'PDF 转 TXT', label: 'TXT', color: '#388bcb', hint: '提取文字生成TXT文件，保留基本换行，不保留图片与排版；无文字层页面自动OCR，扫描识别最多20页。', accept: ['pdf'] },
   { id: 'watermark', title: 'PDF 加水印', label: '印', color: '#ff3297', hint: '为 PDF 每一页添加半透明文字或图片水印。', accept: ['pdf'] },
   { id: 'remove-watermark', title: 'PDF 去水印', label: '净', color: '#399a9a', hint: '选择独立水印候选对象，预览确认后生成新PDF；不支持扫描件融合水印。', accept: ['pdf'] },
   { id: 'encrypt', title: 'PDF 加密', label: '锁', color: '#9a36ef', hint: '设置打开密码，使用 AES-256 加密。', accept: ['pdf'] },

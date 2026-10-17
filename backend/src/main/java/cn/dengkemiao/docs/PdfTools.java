@@ -73,6 +73,7 @@ public class PdfTools {
                         try(var stream=new PDPageContentStream(doc,page,PDPageContentStream.AppendMode.APPEND,true,true)){stream.beginText();stream.setNonStrokingColor(Color.DARK_GRAY);stream.setFont(numberFont,11);stream.newLineAtOffset(box.getLowerLeftX()+(box.getWidth()-width)/2,position.equals("top")?box.getUpperRightY()-22:box.getLowerLeftY()+16);stream.showText(label);stream.endText();}
                     }
                     break;
+                case "pdf-txt": return PdfTextExport.export(doc);
                 case "pdf-word": return word(doc);
                 case "split": return split(doc,options.getOrDefault("ranges",""));
                 case "pdf-images": return images(doc,options.getOrDefault("format","jpg"));

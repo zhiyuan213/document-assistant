@@ -22,7 +22,7 @@ onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
 const onlyFavorites=ref(false),query=ref(''),saved=ref([])
 const category=ref('all')
 const groups=[{id:'all',title:'全部'},{id:'convert',title:'格式转换'},{id:'organize',title:'页面整理'},{id:'edit',title:'优化编辑'},{id:'security',title:'安全保护'}]
-const toolGroups={convert:['pdf-word','word-pdf','images','pdf-images','excel-pdf','ppt-pdf','markdown','extract-images'],organize:['merge','split','rotate','extract','remove-pages','reorder'],edit:['compress','remove-watermark','watermark','page-numbers','ocr','crop','sign','repair','compare'],security:['encrypt','decrypt','redact']}
+const toolGroups={convert:['pdf-txt','pdf-word','word-pdf','images','pdf-images','excel-pdf','ppt-pdf','markdown','extract-images'],organize:['merge','split','rotate','extract','remove-pages','reorder'],edit:['compress','remove-watermark','watermark','page-numbers','ocr','crop','sign','repair','compare'],security:['encrypt','decrypt','redact']}
 const items=computed(()=>pdfTools.filter(t=>(category.value==='all'||toolGroups[category.value].includes(t.id))&&(!onlyFavorites.value||saved.value.includes(t.id))&&(!query.value.trim()||[t.title,t.hint,t.label].join(' ').toLowerCase().includes(query.value.trim().toLowerCase()))))
 onShow(()=>saved.value=favorites());onShareAppMessage(()=>pdfShare());onAddToFavorites(()=>({title:'登科喵PDF · 工具箱'}))
 function toggle(id){saved.value=toggleFavorite(id)}

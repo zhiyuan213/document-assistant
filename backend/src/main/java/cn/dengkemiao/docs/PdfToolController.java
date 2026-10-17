@@ -27,7 +27,7 @@ import jakarta.annotation.PreDestroy;
 public class PdfToolController {
     private final JdbcTemplate db; private final PdfTools tools; private final TransactionTemplate tx; private final WechatPayService wechatPay; private final ObjectMapper json; private final PdfAiCredits aiCredits; private final PdfVirtualPayments virtualPayments;
     private final ThreadPoolExecutor workers=new ThreadPoolExecutor(2,2,0,TimeUnit.SECONDS,new ArrayBlockingQueue<>(4));
-    private static final Set<String> TOOLS=Set.of("pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers","excel-pdf","ppt-pdf","crop","sign","extract-images","ocr","repair","markdown","compare","redact","remove-watermark");
+    private static final Set<String> TOOLS=Set.of("pdf-txt","pdf-word","word-pdf","merge","split","compress","images","pdf-images","watermark","encrypt","decrypt","rotate","extract","remove-pages","reorder","page-numbers","excel-pdf","ppt-pdf","crop","sign","extract-images","ocr","repair","markdown","compare","redact","remove-watermark");
     @Value("${PDF_PAYMENT_PROVIDER:virtual}") private String paymentProvider;
     private boolean virtualProvider(){return "virtual".equals(paymentProvider);}
     private boolean paymentReady(){return virtualProvider()?virtualPayments.enabled():"wechat".equals(paymentProvider)&&wechatPay.enabled();}

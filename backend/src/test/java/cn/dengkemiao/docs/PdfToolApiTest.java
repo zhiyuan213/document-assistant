@@ -81,6 +81,17 @@ class PdfToolApiTest {
     private String token()throws Exception{return "Bearer "+json.readTree(mvc.perform(post("/api/pdf/visitor")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asText();}
     private String start(String token,String tool,byte[] file)throws Exception{return json.readTree(mvc.perform(multipart("/api/pdf/jobs").file(new MockMultipartFile("files","test.pdf","application/pdf",file)).param("tool",tool).header("Authorization",token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("id").asText();}
     private void waitJob(String id,String token,String expected)throws Exception{for(int i=0;i<80;i++){var job=json.readTree(mvc.perform(get("/api/pdf/jobs/"+id).header("Authorization",token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());if(job.get("status").asText().equals(expected))return;Thread.sleep(50);}fail("Job did not reach "+expected);}
+    @Test void txtConversionStaysFreeAndDownloadsAreOwnedByTheirVisitor()throws Exception {
+        String a=token(),b=token();String id=start(a,"pdf-txt",PdfTextExportTest.textPdf("Plain text result"));waitJob(id,a,"completed");
+        mvc.perform(get("/api/pdf/jobs/"+id).header("Authorization",a)).andExpect(jsonPath("$.extension").value("txt"));
+        var bytes=mvc.perform(get("/api/pdf/jobs/"+id+"/file").header("Authorization",a)).andExpect(status().isOk()).andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.containsString(".txt"))).andReturn().getResponse().getContentAsByteArray();
+        assertEquals("\uFEFFPlain text result\r\n",new String(bytes,java.nio.charset.StandardCharsets.UTF_8));
+        mvc.perform(get("/api/pdf/jobs/"+id+"/file").header("Authorization",b)).andExpect(status().isNotFound());
+        String owner=db.queryForObject("SELECT visitor_id FROM pdf_tool_job WHERE id=?",String.class,id);
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM pdf_ai_usage WHERE visitor_id=?",Integer.class,owner));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM pdf_daily_quota WHERE visitor_id=?",Integer.class,owner));
+        assertTrue(db.queryForObject("SELECT TIMESTAMPDIFF(SECOND,CURRENT_TIMESTAMP,expires_at) FROM pdf_tool_job WHERE id=?",Integer.class,id)>1700);
+    }
     @Test void anonymousProcessingOwnsResultsAndBasicToolsStayFree()throws Exception{
         String a=token(),b=token();byte[] source=new PdfService().images(List.of(PdfServiceTest.image()),false,false);String id=start(a,"compress",source);waitJob(id,a,"completed");
         mvc.perform(get("/api/pdf/jobs/"+id+"/file").header("Authorization",a)).andExpect(status().isOk());
