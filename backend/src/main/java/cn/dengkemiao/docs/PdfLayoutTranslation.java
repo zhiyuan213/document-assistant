@@ -132,10 +132,11 @@ public class PdfLayoutTranslation {
             if(!root.path("translations").isArray())throw new ApiError(502,"AI译文缺少段落，未生成文件");
             var wanted=new HashSet<Integer>();batch.forEach(r->wanted.add(r.id));
             for(var item:root.path("translations")) {
-                if(!item.path("id").isIntegralNumber()||!wanted.remove(item.path("id").asInt())||!item.path("text").isTextual()
+                Integer id=regionId(item.path("id"));
+                if(id==null||!wanted.remove(id)||!item.path("text").isTextual()
                         ||item.path("text").asText().isBlank()||item.path("text").asText().length()>10000)
                     throw new ApiError(502,"AI译文段落不完整或重复，未生成文件");
-                translated.put(item.path("id").asInt(),item.path("text").asText().replaceAll("[\\p{Cntrl}]"," ").strip());
+                translated.put(id,item.path("text").asText().replaceAll("[\\p{Cntrl}]"," ").strip());
             }
             if(!wanted.isEmpty())throw new ApiError(502,"AI未完整翻译所有段落，未生成文件");
             progress.accept(10+(i+1)*75/batches.size());
@@ -150,6 +151,15 @@ public class PdfLayoutTranslation {
             return new Output(null,text.toString(),List.copyOf(warnings));
         }
     }
+    // Some providers encode identifiers as JSON strings. Accept only exact,
+    // non-negative decimal IDs; never coerce fractions or infer by array order.
+    static Integer regionId(JsonNode node) {
+        if(node.isIntegralNumber()&&node.canConvertToInt()&&node.intValue()>=0)return node.intValue();
+        if(node.isTextual()&&node.textValue().matches("0|[1-9][0-9]{0,9}")) {
+            try{return Integer.valueOf(node.textValue());}catch(NumberFormatException ignored){}
+        }
+        return null;
+    }
     Output render(Plan plan,Map<Integer,String> translations) throws Exception {
         var warnings=new LinkedHashSet<>(plan.warnings);var text=new StringBuilder();
         try(var doc=Loader.loadPDF(plan.input);var bytes=new ByteArrayOutputStream()) {
@@ -157,7 +167,24 @@ public class PdfLayoutTranslation {
             for(var p:doc.getPages())collectFonts(p.getResources(),originalFonts,new HashSet<>());
             var visited=Collections.newSetFromMap(new IdentityHashMap<COSStream,Boolean>());
             for(int i=0;i<plan.pages.size();i++) {
-                var layout=plan.pages.get(i);var page=doc.getPage(i);int rotation=page.getRotation();page.setRotation(0);
+                var layout=plan.pages.get(i);
+                var pageRegions=new ArrayList<Region>();var pageTranslations=new HashMap<Integer,String>();
+                for(var region:plan.regions)if(region.page==i) {
+                    String translated=translations.get(region.id);
+                    if(translated==null||translated.isBlank())throw new ApiError(502,"译文段落缺失，未生成PDF");
+                    if(!pageRegions.isEmpty()&&canJoinInline(pageRegions.getLast(),region)) {
+                        var previous=pageRegions.removeLast();var a=previous.lines.getFirst();var b=region.lines.getFirst();
+                        if(!a.font.equals(b.font)||a.bold!=b.bold)warnings.add("同一行的相邻文字使用兼容字体合并排版，保留文字颜色，请核对字形。");
+                        var joined=new Line(a.text+" "+b.text,a.x,a.y,b.x+b.width-a.x,a.size,a.color,a.font,a.bold||b.bold,a.alpha);
+                        pageRegions.add(new Region(previous.id,i,List.of(joined),previous.text+" "+region.text));
+                        pageTranslations.put(previous.id,pageTranslations.get(previous.id)+" "+translated);
+                    }else {pageRegions.add(region);pageTranslations.put(region.id,translated);}
+                }
+                var renderLines=new ArrayList<>(layout.lines);
+                for(var original:plan.regions)if(original.page==i)renderLines.removeAll(original.lines);
+                pageRegions.forEach(r->renderLines.addAll(r.lines));
+                layout=new Page(layout.width,layout.height,layout.scanned,List.copyOf(renderLines),layout.images);
+                var page=doc.getPage(i);int rotation=page.getRotation();page.setRotation(0);
                 try {
                     if(layout.scanned) {
                         var bitmap=new PDFRenderer(doc).renderImageWithDPI(i,144);
@@ -169,8 +196,8 @@ public class PdfLayoutTranslation {
                     } else stripText(doc,page,page.getResources(),visited);
                     try(var stream=new PDPageContentStream(doc,page,PDPageContentStream.AppendMode.APPEND,true,true)) {
                         text.append("[Page ").append(i+1).append("]\n");
-                        for(var region:plan.regions)if(region.page==i) {
-                            String translated=translations.get(region.id);
+                        for(var region:pageRegions) {
+                            String translated=pageTranslations.get(region.id);
                             if(translated==null||translated.isBlank())throw new ApiError(502,"译文段落缺失，未生成PDF");
                             text.append(translated).append("\n\n");
                             drawRegion(doc,page,stream,layout,region,translated,originalFonts,warnings);
@@ -182,6 +209,13 @@ public class PdfLayoutTranslation {
             if(bytes.size()>28_000_000)throw new ApiError(400,"翻译文件超过28MB，请拆分后处理");
             return new Output(bytes.toByteArray(),text.toString(),List.copyOf(warnings));
         }
+    }
+    private static boolean canJoinInline(Region left,Region right) {
+        if(left.lines.size()!=1||right.lines.size()!=1)return false;
+        var a=left.lines.getFirst();var b=right.lines.getFirst();float gap=b.x-(a.x+a.width);
+        boolean punctuation=a.text.matches("[\\p{P}\\s]+")||b.text.matches("[\\p{P}\\s]+");
+        return Math.abs(a.y-b.y)<1&&gap>=-1&&gap<=2&&Math.abs(a.size-b.size)<.5f
+                &&a.color==b.color&&Math.abs(a.alpha-b.alpha)<.01;
     }
     private void drawRegion(PDDocument doc,PDPage page,PDPageContentStream stream,Page layout,Region region,String text,
                             Map<String,PDFont> originals,Set<String> warnings) throws Exception {
@@ -198,12 +232,6 @@ public class PdfLayoutTranslation {
         java.util.function.ToDoubleFunction<String> measure=s->{try{return chosen!=null?chosen.getStringWidth(s)*first.size/1000:new TextLayout(s,shaped,new FontRenderContext(null,true,true)).getAdvance();}catch(Exception e){throw new IllegalStateException(e);}};
         float right=(float)region.lines.stream().mapToDouble(l->l.x+l.width).max().orElse(layout.width-30);
         right=Math.min(layout.width-8,Math.max(right,first.x+25));
-        if(region.lines.size()==1&&(first.width<first.size*2||first.size>=16&&first.x<layout.width*.2&&first.y>110)) {
-            float freeRight=layout.width-35;
-            for(var other:layout.lines)if(other!=first&&Math.abs(other.y-first.y)<first.size*1.2&&other.x>first.x+first.width+2)freeRight=Math.min(freeRight,other.x-3);
-            for(var image:layout.images)if(image.left>first.x+first.width&&image.top<first.y+first.size*.3&&image.bottom>first.y-first.size)freeRight=Math.min(freeRight,image.left-3);
-            right=Math.max(right,Math.min(freeRight,first.width<first.size*2?first.x+first.size*12:freeRight));
-        }
         List<Line> slots=region.lines;float center=-1;
         // A short source-language heading can occupy a much wider translated
         // string. Keep its centre and baseline rather than forcing it into the
@@ -218,6 +246,8 @@ public class PdfLayoutTranslation {
         // original baseline must remain clear of neighbouring columns and images.
         if(center<0) {
             float freeRight=layout.width-Math.max(35,first.size);
+            float textMargin=(float)layout.lines.stream().mapToDouble(l->l.x+l.width).max().orElse(freeRight);
+            if(layout.lines.size()>=4&&textMargin>layout.width*.65f)freeRight=Math.min(freeRight,textMargin);
             for(var line:region.lines) {
                 for(var other:layout.lines) {
                     if(region.lines.contains(other))continue;
@@ -234,19 +264,43 @@ public class PdfLayoutTranslation {
             rows=wrap(text,slots,right,scale,measure);
             if(rows!=null)break;
         }
+        float fittedSize=first.size;
+        // Long translations may need one more line inside the blank space before
+        // the next block. Preserve the starting baseline and never cross a neighbour.
+        if(rows==null && center<0 && first.size<=16) {
+            float bottom=layout.height-35;
+            for(var other:layout.lines)if(!region.lines.contains(other)&&other.y>region.lines.getLast().y
+                    &&other.x<right&&other.x+other.width>first.x)bottom=Math.min(bottom,other.y-other.size-1.5f);
+            for(var image:layout.images)if(image.top>region.lines.getLast().y&&image.left<right&&image.right>first.x)bottom=Math.min(bottom,image.top-2);
+            for(int shrink=0;shrink<=3&&rows==null;shrink++) {
+                float candidate=first.size*(1-shrink*.05f);if(candidate<8)break;
+                var expanded=new ArrayList<Line>(region.lines);
+                float baseline=expanded.getLast().y+candidate*1.2f;
+                while(expanded.size()<region.lines.size()+3 && baseline+candidate*.3f<=bottom) {
+                    expanded.add(new Line("",first.x,baseline,right-first.x,candidate,first.color,first.font,first.bold,first.alpha));baseline+=candidate*1.2f;
+                }
+                final float ratio=candidate/first.size;
+                for(int attempt=0;attempt<=70;attempt++) {
+                    float candidateScale=1-attempt*.005f;
+                    var candidateRows=wrap(text,expanded,right,candidateScale,value->measure.applyAsDouble(value)*ratio);
+                    if(candidateRows!=null){rows=candidateRows;slots=expanded;scale=candidateScale;fittedSize=candidate;break;}
+                }
+            }
+            if(rows!=null)warnings.add("部分较长译文在相邻留白内换行或微调字号，请核对排版。");
+        }
         if(rows==null)throw new ApiError(422,"第"+(region.page+1)+"页第"+(region.id+1)+"文字块译文放不下原文字区域，未导出错版PDF");
         if(scale<.995f)warnings.add("部分译文为适应原文字区域做了字宽调整，未增加页面。");
         for(int i=0;i<rows.size();i++) {
             if(rows.get(i).isBlank())continue;
-            var line=region.lines.get(i);float x=page.getCropBox().getLowerLeftX()+line.x;
+            var line=slots.get(i);float x=page.getCropBox().getLowerLeftX()+line.x;
             if(center>=0)x=page.getCropBox().getLowerLeftX()+center-(float)measure.applyAsDouble(rows.get(i))*scale/2;
             float y=page.getCropBox().getUpperRightY()-line.y;
             stream.saveGraphicsState();stream.setNonStrokingColor(new Color(first.color));
             var transparency=new org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState();transparency.setNonStrokingAlphaConstant(first.alpha);stream.setGraphicsStateParameters(transparency);
             if(chosen!=null) {
-                stream.beginText();stream.setFont(chosen,first.size);stream.setHorizontalScaling(scale*100);
+                stream.beginText();stream.setFont(chosen,fittedSize);stream.setHorizontalScaling(scale*100);
                 stream.newLineAtOffset(x,y);stream.showText(rows.get(i));stream.endText();
-            } else drawOutline(stream,rows.get(i),shaped,x,y,scale);
+            } else drawOutline(stream,rows.get(i),shaped.deriveFont(fittedSize),x,y,scale);
             stream.restoreGraphicsState();
         }
     }

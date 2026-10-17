@@ -19,7 +19,7 @@
   <view v-if="mode==='translate'" class="ui-caption">自动识别原文语言。提供文本、Word及保留版式的PDF；扫描页需OCR重建，复杂底纹和表格请核对。</view>
   <textarea v-if="mode==='translate'" v-model="prompt" :disabled="busy || translationPending" class="ui-input prompt" maxlength="1000" placeholder="补充要求（选填），例如：保留产品名称、使用正式语气" />
   <view v-if="estimate" class="estimate"><view class="estimate-title">用量预估</view><view v-if="!estimate.documentTranslation">预计输入 {{formatCredits(estimate.estimatedInputTokens)}} Token</view><view v-else>整份文档共 {{estimate.pages}} 页，按分段翻译的累计用量估算。</view><view v-for="warning in estimate.warnings||[]" :key="warning">{{warning}}</view><view v-if="estimate.testMode">测试模式：预占和实际扣用户额度均为 0。</view><view v-else>预计预占 {{formatCredits(estimate.reservedTokenCredits)}} 加权额度；完成后按实际用量结算，多余预占退回，实际用量可能超过预估。</view><view v-if="!estimate.canRun" class="error-inline">{{estimate.testMode?'今日次数已用完，请明日再试。':'额度或今日次数不足，请查看我的额度。'}}</view><text v-if="!estimate.canRun && !estimate.testMode" class="notice-link" @click="openCredits">查看我的额度 ›</text></view>
-  <PdfAiBilling v-if="!status.testMode" /><view v-if="translationPending" class="ui-notice">已有翻译任务，查询不会再次扣费。<button class="ui-button ui-button-secondary" :disabled="busy" @click="resumeTranslation">查询翻译进度</button></view>
+  <PdfAiBilling v-if="!status.testMode" />
   <button class="ui-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length || (estimate && !estimate.canRun)))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':estimate?(estimate.testMode?'开始测试 · 不扣额度':'确认并'+current.action):'免费估算用量'}}</button>
   <view class="privacy">估算仅在本服务提取文字；确认分析后，文档文字才会发送至 DeepSeek。AI 结果请核对原文，原 PDF 不会被修改。</view>
   <view v-if="error" class="error" role="alert">{{error}}</view>
@@ -105,7 +105,7 @@ async function waitTranslation(id){
   if(state.status==='completed')return state
   if(state.status==='failed'){translationPending.value=false;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);throw new Error(state.message||'翻译未完成，请重试')}
  }
- throw new Error('任务仍在后台处理中，请点击查询翻译进度，不要重复提交。')
+ throw new Error('任务仍在后台处理中，重新进入本页会自动恢复进度，请勿重复提交。')
 }
 async function resumeTranslation(){if(busy.value)return;let id=translationJob.value||uni.getStorageSync(translationKey);const requestId=uni.getStorageSync(translationRequestKey);if(!id&&!requestId)return;busy.value=true;mode.value='translate';translationPending.value=true;error.value=''
  try{if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}translationJob.value=id;applyResult(await waitTranslation(id));await refreshStatus()}catch(e){error.value=e.message;if(e.status===404){translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey);if(e.message==='请求路径不存在'){error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'}else if(id){uni.removeStorageSync(translationRequestKey)}}}finally{busy.value=false}}

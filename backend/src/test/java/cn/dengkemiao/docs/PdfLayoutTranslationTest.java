@@ -70,7 +70,7 @@ class PdfLayoutTranslationTest {
         var plan=new PdfLayoutTranslation.Plan(input,List.of(layout),List.of(new PdfLayoutTranslation.Region(0,0,List.of(address),"Rue")),3,List.of());
         var result=engine.render(plan,Map.of(0,"1 Jean-Henri Fabre Street"));
         try(var d=Loader.loadPDF(result.pdf())){assertTrue(new PDFTextStripper().getText(d).contains("1 Jean-Henri Fabre Street"));}
-        assertThrows(ApiError.class,()->engine.render(plan,Map.of(0,"A very long address ".repeat(15))));
+        assertThrows(ApiError.class,()->engine.render(plan,Map.of(0,"A very long address ".repeat(150))));
     }
     @Test void longWordWrapRetainsEveryCharacterAcrossOriginalLines() {
         var line=new PdfLayoutTranslation.Line("x",0,20,5,10,0,"Helvetica",false);
@@ -85,6 +85,38 @@ class PdfLayoutTranslationTest {
         var plan=new PdfLayoutTranslation.Plan(input,List.of(page),List.of(new PdfLayoutTranslation.Region(0,0,List.of(a,b),"Tiny text")),9,List.of());
         var output=engine.render(plan,Map.of(0,"This complete translated paragraph can use the empty space on its original lines without adding pages."));
         try(var doc=Loader.loadPDF(output.pdf())){assertEquals(1,doc.getNumberOfPages());assertTrue(new PDFTextStripper().getText(doc).contains("This complete translated paragraph"));}
+    }
+    @Test void stringRegionIdsAreAcceptedButAmbiguousOrOutOfRangeIdsAreNot()throws Exception {
+        assertEquals(12,PdfLayoutTranslation.regionId(json.readTree("\"12\"")));
+        for(String invalid:List.of("1.5","-1","2147483648","\"01\"","\"1.0\"","\"2147483648\"","null"))assertNull(PdfLayoutTranslation.regionId(json.readTree(invalid)));
+        var plan=engine.inspect(sample(),30,5,15000);
+        var output=engine.translate(plan,"English","",(system,user,cap)->{
+            try{
+                var source=json.readTree(user.substring(user.lastIndexOf("\n[")+1));var rows=new ArrayList<Map<String,String>>();
+                source.forEach(row->rows.add(Map.of("id",row.path("id").asText(),"text","Translated sentence.")));
+                return new DeepSeekService.Result(json.writeValueAsString(Map.of("translations",rows)),10,10);
+            }catch(Exception e){throw new RuntimeException(e);}
+        },p->{});
+        assertNotNull(output.pdf());
+    }
+    @Test void adjacentFontFragmentsFitAsOneLineWithoutLosingText()throws Exception {
+        var a=new PdfLayoutTranslation.Line("A",40,200,90,11,0xff0000,"Helvetica",true);
+        var b=new PdfLayoutTranslation.Line("...",130,200,10,11,0xff0000,"Times",false);
+        var c=new PdfLayoutTranslation.Line("B",140,200,40,11,0xff0000,"Helvetica",true);
+        var lines=List.of(a,b,c);var regions=new ArrayList<PdfLayoutTranslation.Region>();
+        for(int i=0;i<3;i++)regions.add(new PdfLayoutTranslation.Region(i,0,List.of(lines.get(i)),lines.get(i).text()));
+        var plan=new PdfLayoutTranslation.Plan(sample(),List.of(new PdfLayoutTranslation.Page(595,842,false,lines)),regions,5,List.of());
+        var result=engine.render(plan,Map.of(0,"Promote diversity and inclusion",1,"...",2,"Respect everyone"));
+        try(var doc=Loader.loadPDF(result.pdf())){String text=new PDFTextStripper().getText(doc);assertTrue(text.contains("Promote diversity and inclusion"));assertTrue(text.contains("Respect everyone"));}
+    }
+    @Test void extraTranslationLinesStopBeforeTheFollowingHeading()throws Exception {
+        var body=new PdfLayoutTranslation.Line("Source",40,180,510,11,0,"Helvetica",false);
+        var heading=new PdfLayoutTranslation.Line("Next",40,208,200,11,0xff0000,"Helvetica",true);
+        var plan=new PdfLayoutTranslation.Plan(sample(),List.of(new PdfLayoutTranslation.Page(595,842,false,List.of(body,heading))),List.of(new PdfLayoutTranslation.Region(0,0,List.of(body),"Source"),new PdfLayoutTranslation.Region(1,0,List.of(heading),"Next")),10,List.of());
+        var translated="This chapter describes the integrity principles that suppliers should uphold in their operations, with the aim of maintaining the relationship of mutual trust established between suppliers and the parks.";
+        var result=engine.render(plan,Map.of(0,translated,1,"Next"));
+        try(var doc=Loader.loadPDF(result.pdf())){assertEquals(1,doc.getNumberOfPages());assertTrue(new PDFTextStripper().getText(doc).contains("Next"));}
+        assertThrows(ApiError.class,()->engine.render(plan,Map.of(0,translated.repeat(8),1,"Next")));
     }
     @Test void translatesAllBatchesAndQuotesEachIdInJson()throws Exception {
         var plan=engine.inspect(sample(),30,5,15000);var calls=new ArrayList<Integer>();
