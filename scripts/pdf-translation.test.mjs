@@ -61,7 +61,7 @@ test('only completed native delivery reports success; unsupported or cancelled a
  for(const kind of ['success','unsupported','cancelled']){
   const p=page({delivery:async()=>{if(kind==='cancelled')throw {cancelled:true};return {unsupported:kind==='unsupported'}}});p.answer.value='result'
   await p.exportReport('pdf');assert.equal(p.toasts.length,0)
-  await p.deliverReport('download');assert.equal(p.toasts.length,kind==='success'?1:0);assert.equal(p.exporting.value,false)
+  await p.deliverReport();assert.equal(p.toasts.length,kind==='success'?1:0);assert.equal(p.exporting.value,false)
  }
 })
 

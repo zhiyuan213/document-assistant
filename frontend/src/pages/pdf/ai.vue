@@ -21,7 +21,7 @@
   <view v-if="answer" class="ui-section-title">{{mode==='translate'?'04':'03'}} <text class="step-name">{{mode==='summary'?'总结报告':'翻译结果'}}</text></view>
   <view v-if="answer" class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF</button></view>
    <view v-if="pdfUnavailable" class="ui-notice">译文超出原文字区域或字体无法还原，本次未生成保留版式的 PDF，可选择 Word。</view>
-   <view class="export-label">导出方式</view><view class="export-actions"><button class="ui-button" :disabled="exporting" @click="deliverReport('share')">{{exporting?'正在准备文件…':'转发给微信好友'}}</button><button class="ui-button ui-button-secondary" :disabled="exporting" @click="deliverReport('download')">下载到本机</button></view>
+   <view class="export-actions delivery-actions"><button class="ui-button" :disabled="exporting" @click="deliverReport">{{exporting?'正在准备文件…':'转发保存'}}</button></view>
   </view>
   <PdfAiBilling v-if="!status.testMode" />
  </view>
@@ -33,7 +33,7 @@ import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import PdfToolTile from '../../components/PdfToolTile.vue'
 import {headerPadding} from '../../lib/layout'
 import {onLoad,onShow} from '@dcloudio/uni-app'
-import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile,saveFileToPhone} from '../../lib/pdf-api'
+import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile} from '../../lib/pdf-api'
 
 const modeColors=['#5875df','#388bcb'],modeLabels=['总','译']
 const modes=[
@@ -135,21 +135,21 @@ function chooseExportFormat(format){
  exportFormat.value=format;exportFile.value=null
  if(miniProgram)exportReport(format)
 }
-async function deliverReport(action){
+async function deliverReport(){
  if(exporting.value||!answer.value)return
  error.value=''
  if(!miniProgram){exporting.value=true;try{await exportAiReport(answer.value,exportFormat.value,mode.value==='translate'?translationJob.value:'');uni.showToast({title:'已开始下载',icon:'none'})}catch(e){error.value=e.message}finally{exporting.value=false}return}
  if(!exportFile.value || exportFile.value.extension!==exportFormat.value){
   const identity=exportIdentity(),format=exportFormat.value
   const file=await exportReport(format)
-  if(file&&identity===exportIdentity()&&format===exportFormat.value)uni.showToast({title:'文件已准备好，请再次点击'+(action==='share'?'转发':'下载'),icon:'none'})
+  if(file&&identity===exportIdentity()&&format===exportFormat.value)uni.showToast({title:'文件已准备好，请再次点击转发保存',icon:'none'})
   return
  }
  exporting.value=true
  try{
   // Native sharing must start in the click handler, before any await.
-  const result=await (action==='share'?shareSavedFile(exportFile.value):saveFileToPhone(exportFile.value))
-  if(!result?.unsupported)uni.showToast({title:action==='share'?'转发成功':'下载成功',icon:'none'})
+  const result=await shareSavedFile(exportFile.value)
+  if(!result?.unsupported)uni.showToast({title:'转发成功',icon:'none'})
  }catch(e){if(!e.cancelled)error.value=e.message}finally{exporting.value=false}
 }
 function formatCredits(value){return Number(value||0).toLocaleString('zh-CN')}
@@ -157,6 +157,7 @@ function openCredits(){uni.navigateTo({url:'/pages/pdf/credits'})}
 function back(){uni.switchTab({url:'/pages/tools/index'})}
 </script>
 <style scoped>
+.delivery-actions{margin-top:24rpx}
 .export-label{font-size:26rpx;font-weight:600;color:#253858;margin:24rpx 0 12rpx}.format-selected{background:#edf4ff!important;border-color:#246bfd!important;color:#246bfd!important}
 .language-picker{display:flex;justify-content:space-between}.language-picker text{color:#246bfd;font-size:24rpx}.export-actions{display:flex;gap:16rpx}.export-actions button{flex:1}
 
