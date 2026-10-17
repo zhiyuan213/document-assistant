@@ -41,7 +41,7 @@ test('a reopened page can recover the task before receiving its job id',async()=
 
 test('format choices prepare one existing result and unavailable layout PDF is blocked',async()=>{
  const p=page();p.answer.value='Complete translation';p.usageDetails.value={pdfAvailable:false}
- p.chooseExportFormat('pdf');assert.equal(p.exportFormat.value,'docx');assert.equal(p.exports.length,0)
+ assert.equal(p.exportFormat.value,'pdf');p.exportFormat.value='docx';p.chooseExportFormat('pdf');assert.equal(p.exportFormat.value,'docx');assert.equal(p.exports.length,0)
  p.chooseExportFormat('docx');await new Promise(resolve=>setImmediate(resolve))
  assert.equal(p.exports[0][1],'docx');assert.equal(p.exportFile.value.extension,'docx')
 })
@@ -60,7 +60,7 @@ test('format preparation is silent, deduplicated and cannot overwrite a newer se
 test('only completed native delivery reports success; unsupported or cancelled actions do not',async()=>{
  for(const kind of ['success','unsupported','cancelled']){
   const p=page({delivery:async()=>{if(kind==='cancelled')throw {cancelled:true};return {unsupported:kind==='unsupported'}}});p.answer.value='result'
-  await p.exportReport('docx');assert.equal(p.toasts.length,0)
+  await p.exportReport('pdf');assert.equal(p.toasts.length,0)
   await p.deliverReport('download');assert.equal(p.toasts.length,kind==='success'?1:0);assert.equal(p.exporting.value,false)
  }
 })
