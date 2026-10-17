@@ -54,6 +54,29 @@ class PdfLayoutTranslationTest {
         assertThrows(ApiError.class,()->engine.translate(plan,"English","",(s,u,c)->new DeepSeekService.Result("{\"translations\":[]}",10,5),p->{}));
         assertThrows(ApiError.class,()->engine.translate(plan,"English","",(s,u,c)->new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"A\"},{\"id\":0,\"text\":\"B\"}]}",10,5),p->{}));
     }
+    @Test void repairsOnlyAmbiguousRegionsAndPreservesAlreadyValidatedText()throws Exception {
+        var plan=engine.inspect(sample(),30,5,15000);assertEquals(2,plan.regions().size());
+        var requests=new ArrayList<List<Integer>>();
+        var output=engine.translate(plan,"English","",(system,user,cap)->{
+            try {
+                var rows=json.readTree(user.substring(user.lastIndexOf("\n[")+1));var ids=new ArrayList<Integer>();rows.forEach(row->ids.add(row.path("id").asInt()));requests.add(ids);
+                if(requests.size()==1)return new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"Keep validated text.\"},{\"id\":1,\"text\":\"Wrong A\"},{\"id\":1,\"text\":\"Wrong B\"}]}",10,5);
+                assertEquals(List.of(1),ids);assertTrue(system.contains("Never renumber"));
+                return new DeepSeekService.Result("{\"translations\":[{\"id\":\"1\",\"text\":\"Repaired text.\"}]}",10,5);
+            }catch(Exception e){throw new RuntimeException(e);}
+        },p->{});
+        assertEquals(2,requests.size());assertTrue(output.text().contains("Keep validated text."));assertTrue(output.text().contains("Repaired text."));assertFalse(output.text().contains("Wrong"));
+    }
+    @Test void malformedResponseIsRetriedAndRepeatedInvalidResponsesStopAtThreeAttempts()throws Exception {
+        var plan=engine.inspect(sample(),30,5,15000);var count=new java.util.concurrent.atomic.AtomicInteger();
+        var output=engine.translate(plan,"English","",(system,user,cap)->{
+            if(count.incrementAndGet()==1)return new DeepSeekService.Result("not JSON",10,5);
+            return new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"First.\"},{\"id\":1,\"text\":\"Second.\"}]}",10,5);
+        },p->{});
+        assertEquals(2,count.get());assertNotNull(output.pdf());
+        count.set(0);assertThrows(ApiError.class,()->engine.translate(plan,"English","",(system,user,cap)->{count.incrementAndGet();return new DeepSeekService.Result("{\"translations\":[]}",10,5);},p->{}));
+        assertEquals(3,count.get());
+    }
     @Test void aCenteredCoverHeadingCanExpandWithoutMovingItsBaselineOrAddingAPage()throws Exception {
         byte[] input;try(var d=new PDDocument();var out=new ByteArrayOutputStream()) {
             var p=new PDPage(PDRectangle.A4);d.addPage(p);

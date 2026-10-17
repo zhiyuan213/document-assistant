@@ -39,7 +39,7 @@ public class PdfTranslationJobs {
                     output.pdf,output.word,json.writeValueAsString(output.result),id);
         } catch(Exception e) {
             String message=e instanceof ApiError?e.getMessage():"翻译处理失败，请稍后重试；已调用AI的部分按用量结算";
-            org.slf4j.LoggerFactory.getLogger(getClass()).warn("PDF translation job {} failed ({})",id,e.getClass().getSimpleName());
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn("PDF translation job {} failed ({}) reason={}",id,e.getClass().getSimpleName(),message);
             db.update("UPDATE pdf_translation_job SET status='failed',error_message=?,expires_at=TIMESTAMPADD(MINUTE,30,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE id=?",message,id);
         }
     }

@@ -74,16 +74,16 @@ class PdfAiCreditsTest {
         String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();
         String hash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         String owner=db.queryForObject("SELECT id FROM pdf_visitor WHERE token_hash=?",String.class,hash);credits.grantTopup(owner,2000000);
-        when(model.enabled()).thenReturn(true);when(model.complete(anyString(),anyString(),anyInt(),eq(true))).thenReturn(new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"Translated text\"}]}",100,25));
+        when(model.enabled()).thenReturn(true);when(model.complete(anyString(),anyString(),anyInt(),eq(true))).thenReturn(new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"A\"},{\"id\":0,\"text\":\"B\"}]}",10,5),new DeepSeekService.Result("{\"translations\":[{\"id\":0,\"text\":\"Translated text\"}]}",100,25));
         var file=new org.springframework.mock.web.MockMultipartFile("files","synthetic.pdf","application/pdf",samplePdf());String key=UUID.randomUUID().toString();
         mvc.perform(multipart("/api/pdf/ai/estimate").file(file).param("mode","translate").param("targetLanguage","en").header("Authorization","Bearer "+token)).andExpect(jsonPath("$.documentTranslation").value(true));assertEquals(2000000,credits.snapshot(owner).total());
         String id=json.readTree(mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").param("requestId",key).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("translationJobId").asText();
         for(int i=0;i<100;i++){String state=db.queryForObject("SELECT status FROM pdf_translation_job WHERE id=?",String.class,id);if(!Set.of("queued","processing").contains(state))break;Thread.sleep(30);}
-        assertEquals("completed",db.queryForObject("SELECT status FROM pdf_translation_job WHERE id=?",String.class,id));assertEquals(1999800,credits.snapshot(owner).total());
+        assertEquals("completed",db.queryForObject("SELECT status FROM pdf_translation_job WHERE id=?",String.class,id));assertEquals(1999770,credits.snapshot(owner).total());
         mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").param("requestId",key).header("Authorization","Bearer "+token)).andExpect(jsonPath("$.translationJobId").value(id));
         mvc.perform(get("/api/pdf/ai/translations/by-request/"+key).header("Authorization","Bearer "+token)).andExpect(jsonPath("$.translationJobId").value(id));
         for(String format:List.of("pdf","docx","txt"))mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format",format).header("Authorization","Bearer "+token)).andExpect(status().isOk());
-        verify(model,times(1)).complete(anyString(),anyString(),anyInt(),anyBoolean());assertEquals(1999800,credits.snapshot(owner).total());
+        verify(model,times(2)).complete(anyString(),anyString(),anyInt(),anyBoolean());assertEquals(1999770,credits.snapshot(owner).total());
         assertEquals(1,db.queryForObject("SELECT request_count FROM pdf_ai_daily_usage WHERE visitor_id=?",Integer.class,owner));
     }
     @Test void expiredMembershipCanStillSpendTopup() {
