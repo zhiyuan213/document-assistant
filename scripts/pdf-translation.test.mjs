@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import vm from 'node:vm'
 const source=(await readFile(new URL('../frontend/src/pages/pdf/ai.vue',import.meta.url),'utf8')).split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm,'')
-function page({lostSubmit=false,restore=false,statusLoader,exporter,delivery=async()=>({})}={}){
+function page({lostSubmit=false,restore=false,taskError,statusLoader,exporter,delivery=async()=>({})}={}){
  const storage=new Map(restore?[['pdf-translation-request-v1','original-key']]:[]),calls=[],exports=[],toasts=[];let polls=0,pick
  const context={rememberExport:(file,details)=>file?{...file,...details}:file,exportExpiry:()=>Date.now()+1800000,ref:value=>({value}),computed:fn=>({get value(){return fn()}}),watch(){},onLoad(){},onShow(){},headerPadding(){},setTimeout:fn=>queueMicrotask(fn),
   wx:{chooseMessageFile(options){pick=options}},uni:{getStorageSync:key=>storage.get(key),setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),chooseFile(){},showToast(v){toasts.push(v.title)},navigateTo(){},switchTab(){},setClipboardData(){}},
-  pdfRequest:async path=>{calls.push(path);if(path==='/ai/status'&&statusLoader)return statusLoader();if(path==='/ai/status')return {canUse:true,enabled:true,dailyRemaining:100};if(path.startsWith('/ai/translations/by-request/'))return {translationJobId:'saved-job',status:'processing'};if(path.startsWith('/ai/translations/'))return ++polls===1?{status:'processing',progress:50}:{status:'completed',answer:'English result',usedTokenCredits:200,inputTokens:100,outputTokens:25,warnings:['Check OCR']};throw Error(path)},
+  pdfRequest:async path=>{calls.push(path);if(path==='/ai/status'&&statusLoader)return statusLoader();if(path==='/ai/status')return {canUse:true,enabled:true,dailyRemaining:100};if(path.startsWith('/ai/translations/')&&taskError)throw taskError;if(path.startsWith('/ai/translations/by-request/'))return {translationJobId:'saved-job',status:'processing'};if(path.startsWith('/ai/translations/'))return ++polls===1?{status:'processing',progress:50}:{status:'completed',answer:'English result',usedTokenCredits:200,inputTokens:100,outputTokens:25,warnings:['Check OCR']};throw Error(path)},
   estimatePdfAi:async()=>({documentTranslation:true,canRun:true,remainingTokenCredits:2000000}),
   submitPdfAi:async(...args)=>{calls.push({submit:args});if(lostSubmit)throw Error('network');return {translationJobId:'saved-job'}},
   exportAiReport:async(...args)=>{exports.push(args);if(exporter)return exporter(...args);return {path:'/test/result.'+args[1],extension:args[1]}},shareSavedFile:delivery,saveFileToPhone:delivery,openSavedPdf:async()=>{}
@@ -80,4 +80,17 @@ test('an older status response cannot replace a newer balance; refresh failures 
  assert.equal(p.status.value.monthlyRemainingTokenCredits,100)
  const failed=p.refreshStatus();pending[2].reject(Error('network'));await failed
  assert.equal(p.status.value.monthlyRemainingTokenCredits,100);assert.ok(p.statusError.value)
+})
+
+test('expired saved translation is cleared silently and is not retried on the next visit',async()=>{
+ const p=page({taskError:{status:404,message:'翻译任务已过期或不存在，请重新处理'}})
+ p.storage.set('pdf-translation-job-v1','old-job');p.storage.set('pdf-translation-request-v1','old-request')
+ await p.resumeTranslation()
+ assert.equal(p.error.value,'');assert.equal(p.translationPending.value,false);assert.equal(p.translationJob.value,'')
+ assert.equal(p.storage.size,0);const count=p.calls.length;await p.resumeTranslation();assert.equal(p.calls.length,count)
+})
+test('a missing deployment route still reports a configuration error and preserves the request key',async()=>{
+ const p=page({taskError:{status:404,message:'请求路径不存在'}})
+ p.storage.set('pdf-translation-job-v1','old-job');p.storage.set('pdf-translation-request-v1','request')
+ await p.resumeTranslation();assert.match(p.error.value,/部署/);assert.equal(p.storage.get('pdf-translation-request-v1'),'request')
 })
