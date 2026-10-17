@@ -29,6 +29,7 @@
  </view>
 </template>
 <script setup>
+import {formatCount as formatCredits} from '../../lib/format-number'
 import {nextTick,ref,computed,watch} from 'vue'
 import {rememberExport,exportExpiry} from '../../lib/pdf-export-history'
 import PdfAiBilling from '../../components/pdf-ai-billing.vue'
@@ -161,7 +162,6 @@ async function deliverReport(){
   if(!result?.unsupported)uni.showToast({title:'转发成功',icon:'none'})
  }catch(e){if(!e.cancelled)error.value=e.message}finally{exporting.value=false}
 }
-function formatCredits(value){return Number(value||0).toLocaleString('zh-CN')}
 function openCredits(){uni.navigateTo({url:'/pages/pdf/credits'})}
 function back(){uni.switchTab({url:'/pages/tools/index'})}
 </script>

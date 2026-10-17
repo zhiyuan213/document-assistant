@@ -14,6 +14,7 @@
  </view>
 </template>
 <script setup>
+import {formatCount as formatTokens} from '../../lib/format-number'
 import {nextTick,ref} from 'vue'
 import PdfPageHeader from '../../components/PdfPageHeader.vue'
 import {headerPadding} from '../../lib/layout'
@@ -29,7 +30,6 @@ function refresh(){
 function stop(){if(timer)clearInterval(timer);timer=null}
 onShow(()=>{refresh();stop();timer=setInterval(refresh,10000)})
 onHide(stop);onUnload(stop)
-function formatTokens(value){return Number(value||0).toLocaleString('zh-CN')}
 function formatTime(value){const d=new Date(value),pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())}
 async function share(){
  if(sharing.value)return

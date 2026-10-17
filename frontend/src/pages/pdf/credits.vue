@@ -16,6 +16,7 @@
  </view>
 </template>
 <script setup>
+import {formatCount as formatCredits} from '../../lib/format-number'
 import {ref,computed} from 'vue'
 import PdfAiBilling from '../../components/pdf-ai-billing.vue'
 import {onShow} from '@dcloudio/uni-app'
@@ -36,7 +37,6 @@ async function refresh(){billingError.value='';try{let state=await pdfRequest('/
  }catch(e){billingError.value=e.message;billingEnabled.value=null;membership.value=null;paymentEnabled.value=false}}
 function expiryText(value){return value?value.slice(0,16).replace('T',' '):''}
 function login(){return new Promise((resolve,reject)=>wx.login({success:r=>r.code?resolve(r.code):reject(new Error('微信身份校验失败，请重试')),fail:()=>reject(new Error('微信登录失败，请重试'))}))}
-function formatCredits(value){return Number(value||0).toLocaleString('zh-CN')}
 function storePending(order){pendingOrder.value=order;if(order)uni.setStorageSync(pendingKey,order);else uni.removeStorageSync(pendingKey)}
 async function pollPurchase(order){
  for(let i=0;i<15;i++){if(i)await new Promise(resolve=>setTimeout(resolve,1500));const state=await pdfRequest('/purchase/'+order.orderId);if(state.paid || ['closed','refunded','failed'].includes(state.status)){storePending(null);return state}}
