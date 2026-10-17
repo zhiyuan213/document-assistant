@@ -156,17 +156,17 @@ export function saveFileToPhone(file, platform) {
  // #endif
 }
 
-export async function exportAiReport(content, format, translationJobId = '') {
+export async function exportAiReport(content, format, translationJobId = '', mode = '') {
  await visitor()
  const translated=Boolean(translationJobId)
- const url=baseURL+'/api/pdf/ai/'+(translated?'translations/'+encodeURIComponent(translationJobId)+'/file?format='+encodeURIComponent(format):'export'),header={Authorization:'Bearer '+uni.getStorageSync(tokenKey),'Content-Type':'application/json'},name=(translated?'PDF文档译文':'AI总结报告')+'.'+format
+ const url=baseURL+'/api/pdf/ai/'+(translated?'translations/'+encodeURIComponent(translationJobId)+'/file?format='+encodeURIComponent(format):'export'),header={Authorization:'Bearer '+uni.getStorageSync(tokenKey),'Content-Type':'application/json'},name=(translated?'PDF文档译文':mode==='mindmap'?'AI脑图':'AI总结报告')+'.'+format
  // #ifdef H5
- const response=await fetch(url,{method:translated?'GET':'POST',headers:header,...(translated?{}:{body:JSON.stringify({content,format})})})
+ const response=await fetch(url,{method:translated?'GET':'POST',headers:header,...(translated?{}:{body:JSON.stringify({content,format,mode})})})
  if(!response.ok){const detail=await response.json().catch(()=>({}));throw new Error(detail.message||'导出失败，请重试')}
  const object=URL.createObjectURL(await response.blob()),a=document.createElement('a');a.href=object;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(object),30000)
  // #endif
  // #ifdef MP-WEIXIN
- const response=await new Promise((resolve,reject)=>uni.request({url,method:translated?'GET':'POST',header,...(translated?{}:{data:{content,format}}),responseType:'arraybuffer',timeout:120000,success:resolve,fail:e=>reject(networkError(e))}))
+ const response=await new Promise((resolve,reject)=>uni.request({url,method:translated?'GET':'POST',header,...(translated?{}:{data:{content,format,mode}}),responseType:'arraybuffer',timeout:120000,success:resolve,fail:e=>reject(networkError(e))}))
  if(response.statusCode!==200)throw new Error('导出失败（HTTP '+response.statusCode+'），请稍后重试')
  const path=wx.env.USER_DATA_PATH+'/ai-report-'+Date.now()+'.'+format
  await new Promise((resolve,reject)=>wx.getFileSystemManager().writeFile({filePath:path,data:response.data,success:resolve,fail:e=>reject(fileError('保存文件',e))}))

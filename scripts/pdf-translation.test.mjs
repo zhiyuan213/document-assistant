@@ -12,7 +12,7 @@ function page({initialMode='translate',lostSubmit=false,restore=false,restoredSt
   submitPdfAi:async(...args)=>{calls.push({submit:args});if(lostSubmit)throw Error('network');return {translationJobId:'saved-job'}},
   exportAiReport:async(...args)=>{exports.push(args);if(exporter)return exporter(...args);return {path:'/test/result.'+args[1],extension:args[1]}},shareSavedFile:delivery,saveFileToPhone:delivery,openSavedPdf:async()=>{}
  }
- const p=vm.runInNewContext(source+'\n({resetWorkspace,activeStep,toggleStep,selectMode,removeFile,chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
+ const p=vm.runInNewContext(source+'\n({resetWorkspace,activeStep,toggleStep,selectMode,removeFile,chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormats,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
  p.mode.value=initialMode;p.selected.value=[{path:'/old.pdf',name:'old.pdf',size:20}]
  return {...p,storage,calls,exports,toasts,pick:()=>pick}
 }
@@ -130,4 +130,23 @@ test('switching tabs does not reset a running or uncertain translation',async()=
  const p=page({lostSubmit:true});await p.run();assert.equal(p.translationPending.value,true)
  const key=p.storage.get('pdf-translation-request-v1');p.resetWorkspace()
  assert.equal(p.mode.value,'translate');assert.equal(p.storage.get('pdf-translation-request-v1'),key)
+})
+
+
+test('mindmap uses the existing workflow and exports PNG PDF XMind without submitting again',async()=>{
+ const p=page({initialMode:'mindmap'})
+ await p.run()
+ assert.equal(p.calls.filter(v=>v.submit).length,1)
+ assert.equal(p.calls.find(v=>v.submit).submit[0],'mindmap')
+ assert.deepEqual(Array.from(p.exportFormats.value,format=>format.id),['png','pdf','xmind'])
+ assert.equal(p.exportFormat.value,'pdf')
+ for(const format of ['png','pdf','xmind']){
+  const file=await p.exportReport(format)
+  assert.equal(file.extension,format)
+  assert.ok(file.name.endsWith('_脑图.'+format))
+ }
+ assert.equal(p.exports.length,3)
+ for(const args of p.exports){assert.equal(args[2],'');assert.equal(args[3],'mindmap')}
+ assert.equal(p.calls.filter(v=>v.submit).length,1)
+ assert.ok(p.calls.includes('/ai/status'))
 })

@@ -20,8 +20,8 @@
   <PdfStepPanel v-if="mode==='translate'" :open="activeStep==='language'"><picker :disabled="busy || translationPending" :range="languages" range-key="title" :value="languageIndex" @change="languageIndex=Number($event.detail.value)"><view class="ui-input language-picker">{{languages[languageIndex].title}} <text>点击选择 ›</text></view></picker></PdfStepPanel>
   <button v-if="(mode && selected.length && !answer) || busy || translationPending" class="ui-button process-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':current.action}}</button>
   <view v-if="error" class="error" role="alert">{{error}}</view>
-  <button v-if="answer" class="step-header" :aria-expanded="activeStep==='result'" @click="toggleStep('result')"><text class="step-title">{{mode==='translate'?'04 翻译结果':'03 总结结果'}}</text><text class="step-arrow">{{activeStep==='result'?'−':'＋'}}</text></button>
-  <PdfStepPanel v-if="answer" :open="activeStep==='result'"><view class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting" @click="chooseExportFormat('pdf')">PDF</button></view>
+  <button v-if="answer" class="step-header" :aria-expanded="activeStep==='result'" @click="toggleStep('result')"><text class="step-title">{{mode==='translate'?'04 翻译结果':mode==='mindmap'?'03 脑图结果':'03 总结结果'}}</text><text class="step-arrow">{{activeStep==='result'?'−':'＋'}}</text></button>
+  <PdfStepPanel v-if="answer" :open="activeStep==='result'"><view class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button v-for="format in exportFormats" :key="format.id" class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat===format.id}" :disabled="exporting" @click="chooseExportFormat(format.id)">{{format.title}}</button></view>
    <view class="export-actions delivery-actions"><button class="ui-button" :disabled="exporting" @click="deliverReport">{{exporting?'正在准备文件…':'转发保存'}}</button></view>
   </view></PdfStepPanel>
   <PdfAiBilling v-if="!status.testMode" />
@@ -42,10 +42,11 @@ import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile} from '../../lib/pd
 onTabItemTap(()=>{resetWorkspace();nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0}))})
 const activeStep=ref('mode')
 function toggleStep(step){if(step!=='mode'&&!mode.value){activeStep.value='mode';return}activeStep.value=activeStep.value===step?'':step}
-const modeColors=['#5875df','#388bcb'],modeLabels=['总','译']
+const modeColors=['#5875df','#388bcb','#198b83'],modeLabels=['总','译','图']
 const modes=[
  {id:'summary',title:'AI 总结',brief:'重点 · 结论 · 待办',action:'生成总结报告'},
- {id:'translate',title:'AI 翻译',brief:'常用语言互译',action:'翻译文档'}
+ {id:'translate',title:'AI 翻译',brief:'常用语言互译',action:'翻译文档'},
+ {id:'mindmap',title:'AI 脑图',brief:'梳理主题 · 提炼分支',action:'生成脑图'}
 ]
 const languages=[{id:'zh-CN',title:'简体中文'},{id:'zh-TW',title:'繁体中文'},{id:'en',title:'英语'},{id:'ja',title:'日语'},{id:'ko',title:'韩语'},{id:'fr',title:'法语'},{id:'de',title:'德语'},{id:'es',title:'西班牙语'},{id:'pt',title:'葡萄牙语'},{id:'ru',title:'俄语'},{id:'ar',title:'阿拉伯语'},{id:'it',title:'意大利语'}]
 const languageIndex=ref(0),exporting=ref(false),exportFile=ref(null)
@@ -54,6 +55,7 @@ const translationKey='pdf-translation-job-v1',translationRequestKey='pdf-transla
 const mode=ref(''),selected=ref([]),page=ref('1'),answer=ref(''),error=ref(''),busy=ref(false),busyLabel=ref('正在处理…'),chargedCredits=ref(null),usageDetails=ref(null)
 let resultExpiresAt=0
 const exportFormat=ref('pdf')
+const exportFormats=computed(()=>mode.value==='mindmap'?[{id:'png',title:'PNG'},{id:'pdf',title:'PDF'},{id:'xmind',title:'XMind'}]:[{id:'docx',title:'Word'},{id:'pdf',title:'PDF'}])
 const preparedFiles=new Map()
 let exportGeneration=0
 watch(answer,()=>{exportGeneration++;preparedFiles.clear();exportFile.value=null;exportFormat.value='pdf';if(answer.value&&miniProgram)exportReport(exportFormat.value)})
@@ -159,10 +161,10 @@ async function exportReport(format){
  if(!answer.value)return null
  if(resultExpiresAt && resultExpiresAt<=Date.now()){error.value='文件已超过30分钟，请重新处理';return null}
  const identity=exportIdentity(),key=identity+format
- const details={name:(selected.value[0]?.name||'AI文档').replace(/\.[^.]+$/,'')+(mode.value==='translate'?'_译文':'_总结')+'.'+format,expiresAt:resultExpiresAt||undefined,inputTokens:usageDetails.value?.inputTokens,outputTokens:usageDetails.value?.outputTokens}
+ const details={name:(selected.value[0]?.name||'AI文档').replace(/\.[^.]+$/,'')+(mode.value==='translate'?'_译文':mode.value==='mindmap'?'_脑图':'_总结')+'.'+format,expiresAt:resultExpiresAt||undefined,inputTokens:usageDetails.value?.inputTokens,outputTokens:usageDetails.value?.outputTokens}
  try{
   let pending=preparedFiles.get(key)
-  if(!pending){pending=exportAiReport(answer.value,format,mode.value==='translate'?translationJob.value:'').then(file=>rememberExport(file,details));preparedFiles.set(key,pending)}
+  if(!pending){pending=exportAiReport(answer.value,format,mode.value==='translate'?translationJob.value:'',mode.value).then(file=>rememberExport(file,details));preparedFiles.set(key,pending)}
   const file=await pending||null
   if(identity!==exportIdentity())return null
   if(exportFormat.value===format)exportFile.value=file
@@ -177,7 +179,7 @@ function chooseExportFormat(format){
 async function deliverReport(){
  if(exporting.value||!answer.value)return
  error.value=''
- if(!miniProgram){exporting.value=true;try{await exportAiReport(answer.value,exportFormat.value,mode.value==='translate'?translationJob.value:'');uni.showToast({title:'已开始下载',icon:'none'})}catch(e){error.value=e.message}finally{exporting.value=false}return}
+ if(!miniProgram){exporting.value=true;try{await exportAiReport(answer.value,exportFormat.value,mode.value==='translate'?translationJob.value:'',mode.value);uni.showToast({title:'已开始下载',icon:'none'})}catch(e){error.value=e.message}finally{exporting.value=false}return}
  if(!exportFile.value || exportFile.value.extension!==exportFormat.value){
   const identity=exportIdentity(),format=exportFormat.value
   const file=await exportReport(format)

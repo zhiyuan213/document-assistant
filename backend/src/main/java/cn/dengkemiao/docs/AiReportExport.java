@@ -24,6 +24,10 @@ public class AiReportExport {
                 .header("Content-Disposition","attachment; filename=\"AI-summary."+format+"\"").body(bytes);
         } finally { slots.release(); }
     }
+    public ResponseEntity<byte[]> exportMindMap(String content,String format)throws Exception {
+        if(!slots.tryAcquire())throw new ApiError(429,"导出繁忙，请稍后重试");
+        try{return MindMapExport.export(content,format);}finally{slots.release();}
+    }
     static byte[] word(String content) throws Exception {
         return word(content,"PDF 文档总结报告");
     }

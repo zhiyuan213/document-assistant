@@ -61,6 +61,21 @@ class PdfAiCreditsTest {
             mvc.perform(post("/api/pdf/ai/export").contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
         } finally {org.springframework.test.util.ReflectionTestUtils.setField(ai,"testMode",false);}
     }
+    @Test void mindmapChargesOnceAndExportsAllFormatsWithoutAnotherModelCall()throws Exception {
+        String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();
+        String hash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String owner=db.queryForObject("SELECT id FROM pdf_visitor WHERE token_hash=?",String.class,hash);credits.grantTopup(owner,10000);
+        when(model.enabled()).thenReturn(true);
+        when(model.complete(anyString(),anyString(),anyInt(),eq(true))).thenReturn(new DeepSeekService.Result(MindMapExportTest.CONTENT,100,50));
+        var file=new org.springframework.mock.web.MockMultipartFile("files","synthetic.pdf","application/pdf",samplePdf());
+        var result=json.readTree(mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","mindmap").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertEquals(300,result.path("usedTokenCredits").asLong());assertEquals(9700,credits.snapshot(owner).topup());
+        assertEquals(99,result.path("dailyRemaining").asInt());
+        for(String format:List.of("png","pdf","xmind"))mvc.perform(post("/api/pdf/ai/export").header("Authorization","Bearer "+token).contentType("application/json").content(json.writeValueAsString(Map.of("mode","mindmap","content",result.path("answer").asText(),"format",format)))).andExpect(status().isOk()).andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.containsString("."+format)));
+        assertEquals(9700,credits.snapshot(owner).topup());
+        verify(model,times(1)).complete(anyString(),contains("脑图"),anyInt(),eq(true));
+        mvc.perform(post("/api/pdf/ai/export").contentType("application/json").content(json.writeValueAsString(Map.of("mode","mindmap","content",MindMapExportTest.CONTENT,"format","png")))).andExpect(status().isUnauthorized());
+    }
     @Test void spendsMonthlyBeforeTopupAndReturnsUnusedToOriginalSource() {
         String id=owner(true,1000);
         db.update("UPDATE pdf_ai_wallet SET monthly_used=1999900 WHERE visitor_id=?",id);
