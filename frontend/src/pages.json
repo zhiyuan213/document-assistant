@@ -48,7 +48,8 @@
     {
       "path": "pages/pdf/exports",
       "style": {
-        "navigationBarTitleText": "导出文件"
+        "navigationBarTitleText": "导出文件",
+        "navigationStyle": "custom"
       }
     }
   ],
