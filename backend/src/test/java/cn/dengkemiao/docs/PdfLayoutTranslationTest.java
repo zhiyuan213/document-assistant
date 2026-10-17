@@ -77,6 +77,20 @@ class PdfLayoutTranslationTest {
         count.set(0);assertThrows(ApiError.class,()->engine.translate(plan,"English","",(system,user,cap)->{count.incrementAndGet();return new DeepSeekService.Result("{\"translations\":[]}",10,5);},p->{}));
         assertEquals(3,count.get());
     }
+    @Test void usesAvailableWhitespaceBeyondThreeExtraLinesWithoutAddingPages()throws Exception {
+        byte[] input;
+        try(var doc=new PDDocument();var out=new ByteArrayOutputStream()){
+            var page=new PDPage(PDRectangle.A4);doc.addPage(page);
+            try(var stream=new PDPageContentStream(doc,page)){
+                stream.beginText();stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA),12);
+                stream.newLineAtOffset(40,740);stream.showText("Source paragraph.");stream.endText();
+            }
+            doc.save(out);input=out.toByteArray();
+        }
+        var plan=engine.inspect(input,30,5,15000);String translated="Long translated paragraph with complete details. ".repeat(30);
+        var output=engine.render(plan,Map.of(0,translated));assertEquals("[Page 1]\n"+translated+"\n\n",output.text());
+        try(var doc=Loader.loadPDF(output.pdf())){assertEquals(1,doc.getNumberOfPages());assertTrue(new PDFTextStripper().getText(doc).contains("complete details"));}
+    }
     @Test void aCenteredCoverHeadingCanExpandWithoutMovingItsBaselineOrAddingAPage()throws Exception {
         byte[] input;try(var d=new PDDocument();var out=new ByteArrayOutputStream()) {
             var p=new PDPage(PDRectangle.A4);d.addPage(p);

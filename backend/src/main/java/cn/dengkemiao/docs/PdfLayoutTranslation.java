@@ -150,6 +150,7 @@ public class PdfLayoutTranslation {
         try { return render(plan,translated); }
         catch(ApiError e) {
             if(e.status!=422)throw e;
+            log.warn("Layout PDF unavailable: {}",e.getMessage());
             var warnings=new ArrayList<>(plan.warnings);
             warnings.add(e.getMessage()+"。本次保留完整文本和Word译文，不提供错版PDF，已调用部分按实际用量结算。");
             var text=new StringBuilder();
@@ -299,7 +300,7 @@ public class PdfLayoutTranslation {
                 float candidate=first.size*(1-shrink*.05f);if(candidate<8)break;
                 var expanded=new ArrayList<Line>(region.lines);
                 float baseline=expanded.getLast().y+candidate*1.2f;
-                while(expanded.size()<region.lines.size()+3 && baseline+candidate*.3f<=bottom) {
+                while(baseline+candidate*.3f<=bottom) {
                     expanded.add(new Line("",first.x,baseline,right-first.x,candidate,first.color,first.font,first.bold,first.alpha));baseline+=candidate*1.2f;
                 }
                 final float ratio=candidate/first.size;

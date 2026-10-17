@@ -201,6 +201,7 @@ public class PdfAiController {
                 response.put("freeChargedCredits",reservation.allocation==null?0L:reservation.settled.free());
                 response.put("pages",plan.pages().size());
                 response.put("pdfAvailable",result.pdf()!=null);
+                if(result.pdf()==null&&!result.warnings().isEmpty())response.put("pdfUnavailableReason",result.warnings().getLast().split("。本次",2)[0]);
                 response.put("targetLanguage",language);
                 return new PdfTranslationJobs.Completed(result.pdf(),word,response);
             } catch(Exception e) {

@@ -22,7 +22,7 @@
   <view v-if="error" class="error" role="alert">{{error}}</view>
   <button v-if="answer" class="step-header" :aria-expanded="activeStep==='result'" @click="toggleStep('result')"><text class="step-title">{{mode==='translate'?'04 翻译结果':'03 总结结果'}}</text><text class="step-arrow">{{activeStep==='result'?'−':'＋'}}</text></button>
   <PdfStepPanel v-if="answer" :open="activeStep==='result'"><view class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF</button></view>
-   <view v-if="pdfUnavailable" class="ui-notice">译文超出原文字区域或字体无法还原，本次未生成保留版式的 PDF，可选择 Word。</view>
+   <view v-if="pdfUnavailable" class="ui-notice">{{usageDetails?.pdfUnavailableReason||'本次未生成保留版式的 PDF，可选择 Word。'}}</view>
    <view class="export-actions delivery-actions"><button class="ui-button" :disabled="exporting" @click="deliverReport">{{exporting?'正在准备文件…':'转发保存'}}</button></view>
   </view></PdfStepPanel>
   <PdfAiBilling v-if="!status.testMode" />
