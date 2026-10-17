@@ -12,7 +12,7 @@ function page({lostSubmit=false,restore=false,taskError,statusLoader,exporter,de
   submitPdfAi:async(...args)=>{calls.push({submit:args});if(lostSubmit)throw Error('network');return {translationJobId:'saved-job'}},
   exportAiReport:async(...args)=>{exports.push(args);if(exporter)return exporter(...args);return {path:'/test/result.'+args[1],extension:args[1]}},shareSavedFile:delivery,saveFileToPhone:delivery,openSavedPdf:async()=>{}
  }
- const p=vm.runInNewContext(source+'\n({chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
+ const p=vm.runInNewContext(source+'\n({activeStep,toggleStep,selectMode,removeFile,chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
  p.mode.value='translate';p.selected.value=[{path:'/old.pdf',name:'old.pdf',size:20}]
  return {...p,storage,calls,exports,toasts,pick:()=>pick}
 }
@@ -93,4 +93,20 @@ test('a missing deployment route still reports a configuration error and preserv
  const p=page({taskError:{status:404,message:'请求路径不存在'}})
  p.storage.set('pdf-translation-job-v1','old-job');p.storage.set('pdf-translation-request-v1','request')
  await p.resumeTranslation();assert.match(p.error.value,/部署/);assert.equal(p.storage.get('pdf-translation-request-v1'),'request')
+})
+
+test('accordion advances through translation steps and lets users reopen earlier selections',async()=>{
+ const p=page();assert.equal(p.activeStep.value,'mode')
+ p.selectMode('translate');assert.equal(p.activeStep.value,'files')
+ p.chooseFiles();p.pick().fail({errMsg:'cancel'});assert.equal(p.activeStep.value,'files')
+ p.pick().success({tempFiles:[{path:'/new.pdf',name:'new.pdf',size:30}]});assert.equal(p.activeStep.value,'language')
+ p.toggleStep('files');assert.equal(p.selected.value[0].name,'new.pdf');assert.equal(p.activeStep.value,'files')
+ p.toggleStep('files');assert.equal(p.activeStep.value,'')
+ await p.run();assert.equal(p.activeStep.value,'result');assert.equal(p.answer.value,'English result')
+ p.toggleStep('result');assert.equal(p.activeStep.value,'');assert.equal(p.answer.value,'English result')
+ p.removeFile(0);assert.equal(p.activeStep.value,'files');assert.equal(p.answer.value,'')
+})
+test('summary file selection closes the upload step without opening a language step',()=>{
+ const p=page();p.selectMode('summary');p.chooseFiles();p.pick().success({tempFiles:[{path:'/new.pdf',name:'new.pdf',size:30}]})
+ assert.equal(p.activeStep.value,'');assert.equal(p.selected.value.length,1)
 })

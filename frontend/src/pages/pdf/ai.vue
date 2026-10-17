@@ -9,17 +9,19 @@
   <view v-else-if="!status.enabled" class="ui-notice">AI 服务配置尚未生效，请联系管理员检查后端配置。</view>
   <view v-else-if="!status.canUse" class="ui-notice">额度不足，开通月卡或购买加油包后即可使用。<text class="notice-link" @click="openCredits">查看方案 ›</text></view>
   <view v-else class="quota-card"><view><text>今日免费额度</text><view>{{formatCredits(status.freeRemainingTokenCredits)}}</view></view><view><text>会员月额度</text><view>{{formatCredits(status.monthlyRemainingTokenCredits)}}</view></view><view><text>加油包额度</text><view>{{formatCredits(status.topupRemainingTokenCredits)}}</view></view><text class="quota-foot">今日还可处理 {{status.dailyRemaining}} 次{{status.testMode?' · 测试模式免费体验':''}}</text></view>
-  <view class="ui-section-title">01 <text class="step-name">选择 AI 功能</text></view>
-  <view class="ui-tool-grid"><PdfToolTile v-for="(item,index) in modes" :key="item.id" :label="modeLabels[index]" :color="modeColors[index]" :title="item.title" :caption="item.brief" :selected="mode===item.id" :disabled="busy || translationPending" @click="selectMode(item.id)"/></view>
-  <view class="ui-section-title">02 <text class="step-name">添加 PDF 文件</text></view>
+  <button class="step-header" :aria-expanded="activeStep==='mode'" @click="toggleStep('mode')"><text class="step-title">01 选择 AI 功能</text><text v-if="activeStep!=='mode'" class="step-summary">{{current.title}}</text><text class="step-arrow">{{activeStep==='mode'?'−':'＋'}}</text></button>
+  <view v-show="activeStep==='mode'" class="ui-tool-grid"><PdfToolTile v-for="(item,index) in modes" :key="item.id" :label="modeLabels[index]" :color="modeColors[index]" :title="item.title" :caption="item.brief" :selected="mode===item.id" :disabled="busy || translationPending" @click="selectMode(item.id)"/></view>
+  <button class="step-header" :aria-expanded="activeStep==='files'" @click="toggleStep('files')"><text class="step-title">02 添加 PDF 文件</text><text v-if="activeStep!=='files'" class="step-summary">{{selected[0]?.name||'未选择'}}</text><text class="step-arrow">{{activeStep==='files'?'−':'＋'}}</text></button>
+  <view v-show="activeStep==='files'">
   <view class="picker" @click="chooseFiles"><view class="picker-icon">＋</view><view>{{selected.length?'更换 PDF':pickerText}}</view><text>每次选择一个 PDF · 单个不超过 20MB</text></view>
   <view v-for="(file,index) in selected" :key="file.path" class="file"><view class="file-label">PDF</view><text>{{file.name}}</text><button class="file-remove" :disabled="busy || translationPending" aria-label="移除文件" @click="removeFile(index)">×</button></view>
-  <view v-if="mode==='translate'" class="ui-section-title">03 选择目标语言</view>
-  <picker v-if="mode==='translate'" :disabled="busy || translationPending" :range="languages" range-key="title" :value="languageIndex" @change="languageIndex=Number($event.detail.value)"><view class="ui-input language-picker">{{languages[languageIndex].title}} <text>点击选择 ›</text></view></picker>
-  <button class="ui-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':current.action}}</button>
+  </view>
+  <button v-if="mode==='translate'" class="step-header" :aria-expanded="activeStep==='language'" @click="toggleStep('language')"><text class="step-title">03 选择目标语言</text><text v-if="activeStep!=='language'" class="step-summary">{{languages[languageIndex].title}}</text><text class="step-arrow">{{activeStep==='language'?'−':'＋'}}</text></button>
+  <picker v-if="mode==='translate' && activeStep==='language'" :disabled="busy || translationPending" :range="languages" range-key="title" :value="languageIndex" @change="languageIndex=Number($event.detail.value)"><view class="ui-input language-picker">{{languages[languageIndex].title}} <text>点击选择 ›</text></view></picker>
+  <button v-if="(selected.length && !answer) || busy || translationPending" class="ui-button process-button" :disabled="busy || exporting || !statusLoaded || !status.enabled || (status.canUse && (status.dailyRemaining<1 || !selected.length))" :loading="busy" @click="primaryAction">{{busy?busyLabel:statusError?'AI 服务连接异常':!statusLoaded?'正在检查 AI 服务':!status.enabled?'AI 服务配置未生效':!status.canUse?'充值 AI 额度':!status.dailyRemaining?'今日次数已用完':current.action}}</button>
   <view v-if="error" class="error" role="alert">{{error}}</view>
-  <view v-if="answer" class="ui-section-title">{{mode==='translate'?'04':'03'}} <text class="step-name">{{mode==='summary'?'总结报告':'翻译结果'}}</text></view>
-  <view v-if="answer" class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF</button></view>
+  <button v-if="answer" class="step-header" :aria-expanded="activeStep==='result'" @click="toggleStep('result')"><text class="step-title">{{mode==='translate'?'04 翻译结果':'03 总结结果'}}</text><text class="step-arrow">{{activeStep==='result'?'−':'＋'}}</text></button>
+  <view v-if="answer" v-show="activeStep==='result'" class="answer ui-card"><view class="export-label">文件格式</view><view class="export-actions"><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='docx'}" :disabled="exporting" @click="chooseExportFormat('docx')">Word</button><button class="ui-button ui-button-secondary" :class="{'format-selected':exportFormat==='pdf'}" :disabled="exporting || pdfUnavailable" @click="chooseExportFormat('pdf')">PDF</button></view>
    <view v-if="pdfUnavailable" class="ui-notice">译文超出原文字区域或字体无法还原，本次未生成保留版式的 PDF，可选择 Word。</view>
    <view class="export-actions delivery-actions"><button class="ui-button" :disabled="exporting" @click="deliverReport">{{exporting?'正在准备文件…':'转发保存'}}</button></view>
   </view>
@@ -36,6 +38,8 @@ import {headerPadding} from '../../lib/layout'
 import {onLoad,onShow} from '@dcloudio/uni-app'
 import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile} from '../../lib/pdf-api'
 
+const activeStep=ref('mode')
+function toggleStep(step){activeStep.value=activeStep.value===step?'':step}
 const modeColors=['#5875df','#388bcb'],modeLabels=['总','译']
 const modes=[
  {id:'summary',title:'AI 总结',brief:'重点 · 结论 · 待办',action:'生成总结报告'},
@@ -76,10 +80,10 @@ async function refreshStatus(){
   statusError.value=e.status===404?'当前服务器尚未提供 AI 接口，请部署包含 AI 功能的后端版本。':'无法更新 AI 额度，请点击重新检查。'
  }
 }
-function selectMode(id){if(busy.value||exporting.value||translationPending.value)return;exportFile.value=null;mode.value=id;answer.value='';error.value='';translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);if(id!=='compare'&&selected.value.length>1)selected.value=selected.value.slice(0,1)}
+function selectMode(id){if(busy.value||exporting.value||translationPending.value)return;activeStep.value='files';exportFile.value=null;mode.value=id;answer.value='';error.value='';translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);if(id!=='compare'&&selected.value.length>1)selected.value=selected.value.slice(0,1)}
 function chooseFiles(){
  if(busy.value||exporting.value||translationPending.value)return
- const success=r=>{const files=(r.tempFiles||[]).map(f=>({path:f.path||f.tempFilePath,name:f.name||'document.pdf',size:f.size||0}));if(files.some(f=>f.size>20*1024*1024)){error.value='单个 PDF 不能超过20MB';return}if(!files.length)return;selected.value=files.slice(0,1);error.value='';answer.value='';exportFile.value=null;chargedCredits.value=null;usageDetails.value=null;translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
+ const success=r=>{const files=(r.tempFiles||[]).map(f=>({path:f.path||f.tempFilePath,name:f.name||'document.pdf',size:f.size||0}));if(files.some(f=>f.size>20*1024*1024)){error.value='单个 PDF 不能超过20MB';return}if(!files.length)return;selected.value=files.slice(0,1);activeStep.value=mode.value==='translate'?'language':'';error.value='';answer.value='';exportFile.value=null;chargedCredits.value=null;usageDetails.value=null;translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
  // #ifdef H5
  uni.chooseFile({count:1,type:'file',extension:['.pdf'],success,fail:()=>{}})
  // #endif
@@ -87,7 +91,7 @@ function chooseFiles(){
  wx.chooseMessageFile({count:1,type:'file',extension:['pdf'],success,fail:r=>{if(!String(r.errMsg||'').includes('cancel'))error.value='选择 PDF 失败，请重试'}})
  // #endif
 }
-function removeFile(index){if(busy.value||exporting.value||translationPending.value)return;selected.value.splice(index,1);answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
+function removeFile(index){if(busy.value||exporting.value||translationPending.value)return;selected.value.splice(index,1);activeStep.value='files';answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
 function primaryAction(){if(translationPending.value){resumeTranslation();return}if(!status.value.canUse){openCredits();return}run()}
 async function run(){
  if(busy.value)return
@@ -95,7 +99,7 @@ async function run(){
  error.value='';answer.value='';exportFile.value=null;chargedCredits.value=null;usageDetails.value=null
  const expected=mode.value==='compare'?2:1
  if(selected.value.length!==expected){error.value=mode.value==='compare'?'请选择两个 PDF':'请选择一个 PDF';return}
- busy.value=true
+ busy.value=true;activeStep.value=''
  try{
   let requestId=''
   if(mode.value==='translate'){requestId=uni.getStorageSync(translationRequestKey)||Date.now()+'-'+Math.random().toString(36).slice(2);uni.setStorageSync(translationRequestKey,requestId);translationPending.value=true}
@@ -106,7 +110,7 @@ async function run(){
  catch(e){error.value=e.message||'AI 分析失败，请重试';if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}
  finally{await refreshStatus();busy.value=false}
 }
-function applyResult(result){resultExpiresAt=exportExpiry(result.expiresAt);if(result.targetLanguage){const index=languages.findIndex(l=>l.id===result.targetLanguage);if(index>=0)languageIndex.value=index}answer.value=result.answer;chargedCredits.value=result.usedTokenCredits;usageDetails.value=result;translationWarnings.value=result.warnings||[];translationPending.value=false}
+function applyResult(result){activeStep.value='result';resultExpiresAt=exportExpiry(result.expiresAt);if(result.targetLanguage){const index=languages.findIndex(l=>l.id===result.targetLanguage);if(index>=0)languageIndex.value=index}answer.value=result.answer;chargedCredits.value=result.usedTokenCredits;usageDetails.value=result;translationWarnings.value=result.warnings||[];translationPending.value=false}
 async function waitTranslation(id){
  for(let i=0;i<180;i++){
   if(i)await new Promise(resolve=>setTimeout(resolve,5000))
@@ -161,6 +165,8 @@ function openCredits(){uni.navigateTo({url:'/pages/pdf/credits'})}
 function back(){uni.switchTab({url:'/pages/tools/index'})}
 </script>
 <style scoped>
+.step-header{display:flex;align-items:center;gap:16rpx;width:100%;padding:24rpx 0;margin:14rpx 0 0;background:transparent;text-align:left;color:#253858;line-height:1.5}.step-title{font-size:29rpx;font-weight:600;flex-shrink:0}.step-summary{margin-left:auto;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#73839b;font-size:23rpx}.step-arrow{margin-left:auto;flex-shrink:0;color:#246bfd;font-size:28rpx}.step-summary+.step-arrow{margin-left:0}.process-button{margin-top:24rpx}
+
 .delivery-actions{margin-top:24rpx}
 .export-label{font-size:26rpx;font-weight:600;color:#253858;margin:24rpx 0 12rpx}.format-selected{background:#edf4ff!important;border-color:#246bfd!important;color:#246bfd!important}
 .language-picker{display:flex;justify-content:space-between}.language-picker text{color:#246bfd;font-size:24rpx}.export-actions{display:flex;gap:16rpx}.export-actions button{flex:1}
