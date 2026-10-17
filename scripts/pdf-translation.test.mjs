@@ -3,16 +3,16 @@ import assert from 'node:assert/strict'
 import {readFile} from 'node:fs/promises'
 import vm from 'node:vm'
 const source=(await readFile(new URL('../frontend/src/pages/pdf/ai.vue',import.meta.url),'utf8')).split('<script setup>')[1].split('</script>')[0].replace(/^import .*$/gm,'')
-function page({initialMode='translate',lostSubmit=false,restore=false,taskError,statusLoader,exporter,delivery=async()=>({})}={}){
+function page({initialMode='translate',lostSubmit=false,restore=false,restoredStatus,taskError,statusLoader,exporter,delivery=async()=>({})}={}){
  const storage=new Map(restore?[['pdf-translation-request-v1','original-key']]:[]),calls=[],exports=[],toasts=[];let polls=0,pick
  const context={rememberExport:(file,details)=>file?{...file,...details}:file,exportExpiry:()=>Date.now()+1800000,ref:value=>({value}),computed:fn=>({get value(){return fn()}}),watch(){},onLoad(){},onShow(){},onTabItemTap(){},headerPadding(){},setTimeout:fn=>queueMicrotask(fn),
   wx:{chooseMessageFile(options){pick=options}},uni:{getStorageSync:key=>storage.get(key),setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),chooseFile(){},showToast(v){toasts.push(v.title)},navigateTo(){},switchTab(){},setClipboardData(){}},
-  pdfRequest:async path=>{calls.push(path);if(path==='/ai/status'&&statusLoader)return statusLoader();if(path==='/ai/status')return {canUse:true,enabled:true,dailyRemaining:100};if(path.startsWith('/ai/translations/')&&taskError)throw taskError;if(path.startsWith('/ai/translations/by-request/'))return {translationJobId:'saved-job',status:'processing'};if(path.startsWith('/ai/translations/'))return ++polls===1?{status:'processing',progress:50}:{status:'completed',answer:'English result',usedTokenCredits:200,inputTokens:100,outputTokens:25,warnings:['Check OCR']};throw Error(path)},
+  pdfRequest:async path=>{calls.push(path);if(path==='/ai/status'&&statusLoader)return statusLoader();if(path==='/ai/status')return {canUse:true,enabled:true,dailyRemaining:100};if(path.startsWith('/ai/translations/')&&taskError)throw taskError;if(path.startsWith('/ai/translations/by-request/'))return {translationJobId:'saved-job',status:'processing'};if(path.startsWith('/ai/translations/')&&restoredStatus)return {status:restoredStatus};if(path.startsWith('/ai/translations/'))return ++polls===1?{status:'processing',progress:50}:{status:'completed',answer:'English result',usedTokenCredits:200,inputTokens:100,outputTokens:25,warnings:['Check OCR']};throw Error(path)},
   estimatePdfAi:async()=>({documentTranslation:true,canRun:true,remainingTokenCredits:2000000}),
   submitPdfAi:async(...args)=>{calls.push({submit:args});if(lostSubmit)throw Error('network');return {translationJobId:'saved-job'}},
   exportAiReport:async(...args)=>{exports.push(args);if(exporter)return exporter(...args);return {path:'/test/result.'+args[1],extension:args[1]}},shareSavedFile:delivery,saveFileToPhone:delivery,openSavedPdf:async()=>{}
  }
- const p=vm.runInNewContext(source+'\n({activeStep,toggleStep,selectMode,removeFile,chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
+ const p=vm.runInNewContext(source+'\n({resetWorkspace,activeStep,toggleStep,selectMode,removeFile,chooseFiles,selected,mode,run,resumeTranslation,exportReport,chooseExportFormat,deliverReport,exportFormat,exportFile,exporting,usageDetails,answer,busy,translationPending,translationJob,error,refreshStatus,status,statusError})',context)
  p.mode.value=initialMode;p.selected.value=[{path:'/old.pdf',name:'old.pdf',size:20}]
  return {...p,storage,calls,exports,toasts,pick:()=>pick}
 }
@@ -116,4 +116,19 @@ test('AI function is initially unselected and later steps cannot bypass the choi
  p.toggleStep('files');assert.equal(p.activeStep.value,'mode')
  p.chooseFiles();assert.equal(p.pick(),undefined)
  p.selectMode('translate');assert.equal(p.mode.value,'translate');assert.equal(p.activeStep.value,'files')
+})
+
+test('entering AI again starts at open step 01 without a function or previous result selected',async()=>{
+ const p=page();await p.run();assert.equal(p.storage.size,0)
+ p.resetWorkspace();assert.equal(p.activeStep.value,'mode');assert.equal(p.mode.value,'');assert.equal(p.answer.value,'');assert.equal(p.selected.value.length,0)
+})
+test('automatic restoration discards an old completed task instead of opening step 04',async()=>{
+ const p=page({initialMode:'',restore:true,restoredStatus:'completed'});p.selected.value=[]
+ await p.resumeTranslation(true)
+ assert.equal(p.mode.value,'');assert.equal(p.activeStep.value,'mode');assert.equal(p.answer.value,'');assert.equal(p.translationPending.value,false);assert.equal(p.storage.size,0)
+})
+test('switching tabs does not reset a running or uncertain translation',async()=>{
+ const p=page({lostSubmit:true});await p.run();assert.equal(p.translationPending.value,true)
+ const key=p.storage.get('pdf-translation-request-v1');p.resetWorkspace()
+ assert.equal(p.mode.value,'translate');assert.equal(p.storage.get('pdf-translation-request-v1'),key)
 })

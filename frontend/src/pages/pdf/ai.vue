@@ -40,7 +40,7 @@ import {headerPadding} from '../../lib/layout'
 import {onTabItemTap,onShow} from '@dcloudio/uni-app'
 import {pdfRequest,submitPdfAi,exportAiReport,shareSavedFile} from '../../lib/pdf-api'
 
-onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
+onTabItemTap(()=>{resetWorkspace();nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0}))})
 const activeStep=ref('mode')
 function toggleStep(step){if(step!=='mode'&&!mode.value){activeStep.value='mode';return}activeStep.value=activeStep.value===step?'':step}
 const modeColors=['#5875df','#388bcb'],modeLabels=['总','译']
@@ -68,7 +68,7 @@ miniProgram=true
 // #endif
 const pickerText=computed(()=>miniProgram?'从微信聊天选择 PDF':'点击选择 PDF 文件')
 watch([mode,languageIndex],()=>{if(!busy.value&&!translationPending.value){answer.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}})
-onShow(()=>{refreshStatus();if(!busy.value&&!answer.value&&(uni.getStorageSync(translationKey)||uni.getStorageSync(translationRequestKey)))resumeTranslation()})
+onShow(()=>{refreshStatus();if(!busy.value&&!answer.value&&(uni.getStorageSync(translationKey)||uni.getStorageSync(translationRequestKey)))resumeTranslation(true)})
 let statusRequestId=0
 async function refreshStatus(){
  const requestId=++statusRequestId
@@ -81,6 +81,10 @@ async function refreshStatus(){
   if(requestId!==statusRequestId)return
   statusError.value=e.status===404?'当前服务器尚未提供 AI 接口，请部署包含 AI 功能的后端版本。':'无法更新 AI 额度，请点击重新检查。'
  }
+}
+function resetWorkspace(){
+ if(busy.value||translationPending.value||exporting.value)return
+ mode.value='';activeStep.value='mode';selected.value=[];answer.value='';error.value='';translationJob.value='';translationWarnings.value=[];exportFile.value=null;usageDetails.value=null;chargedCredits.value=null
 }
 function selectMode(id){if(busy.value||exporting.value||translationPending.value)return;activeStep.value='files';exportFile.value=null;mode.value=id;answer.value='';error.value='';translationJob.value='';translationWarnings.value=[];uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey);if(id!=='compare'&&selected.value.length>1)selected.value=selected.value.slice(0,1)}
 function chooseFiles(){
@@ -114,7 +118,7 @@ async function run(){
  catch(e){error.value=e.message||'AI 分析失败，请重试';if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}
  finally{await refreshStatus();busy.value=false}
 }
-function applyResult(result){activeStep.value='result';resultExpiresAt=exportExpiry(result.expiresAt);if(result.targetLanguage){const index=languages.findIndex(l=>l.id===result.targetLanguage);if(index>=0)languageIndex.value=index}answer.value=result.answer;chargedCredits.value=result.usedTokenCredits;usageDetails.value=result;translationWarnings.value=result.warnings||[];translationPending.value=false}
+function applyResult(result){activeStep.value='result';resultExpiresAt=exportExpiry(result.expiresAt);if(result.targetLanguage){const index=languages.findIndex(l=>l.id===result.targetLanguage);if(index>=0)languageIndex.value=index}answer.value=result.answer;chargedCredits.value=result.usedTokenCredits;usageDetails.value=result;translationWarnings.value=result.warnings||[];translationPending.value=false;uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)}
 async function waitTranslation(id){
  for(let i=0;i<180;i++){
   if(i)await new Promise(resolve=>setTimeout(resolve,5000))
@@ -125,8 +129,33 @@ async function waitTranslation(id){
  }
  throw new Error('任务仍在后台处理中，重新进入本页会自动恢复进度，请勿重复提交。')
 }
-async function resumeTranslation(){if(busy.value)return;let id=translationJob.value||uni.getStorageSync(translationKey);const requestId=uni.getStorageSync(translationRequestKey);if(!id&&!requestId)return;busy.value=true;mode.value='translate';translationPending.value=true;error.value=''
- try{if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}translationJob.value=id;applyResult(await waitTranslation(id))}catch(e){error.value=e.message;if(e.status===404){translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey);if(e.message==='请求路径不存在'){error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'}else if(id){error.value='';uni.removeStorageSync(translationRequestKey);if(!selected.value.length){mode.value='';activeStep.value='mode'}}}}finally{await refreshStatus();busy.value=false}}
+async function resumeTranslation(onlyPending=false){
+ if(busy.value)return
+ let id=translationJob.value||uni.getStorageSync(translationKey)
+ const requestId=uni.getStorageSync(translationRequestKey)
+ if(!id&&!requestId)return
+ busy.value=true;translationPending.value=true;error.value=''
+ try{
+  if(!id){const state=await pdfRequest('/ai/translations/by-request/'+encodeURIComponent(requestId));id=state.translationJobId;uni.setStorageSync(translationKey,id)}
+  if(onlyPending){
+   const state=await pdfRequest('/ai/translations/'+encodeURIComponent(id))
+   if(['completed','failed'].includes(state.status)){
+    uni.removeStorageSync(translationKey);uni.removeStorageSync(translationRequestKey)
+    translationPending.value=false;translationJob.value='';mode.value='';activeStep.value='mode'
+    return
+   }
+  }
+  mode.value='translate';translationJob.value=id;applyResult(await waitTranslation(id))
+ }catch(e){
+  error.value=e.message
+  if(e.status===404){
+   translationPending.value=false;translationJob.value='';uni.removeStorageSync(translationKey)
+   if(e.message==='请求路径不存在')error.value='服务器尚未提供翻译任务查询接口，请部署最新后端版本后重试。'
+   else if(id){error.value='';uni.removeStorageSync(translationRequestKey);if(!selected.value.length){mode.value='';activeStep.value='mode'}}
+  }
+ }finally{await refreshStatus();busy.value=false}
+}
+
 function exportIdentity(){return JSON.stringify([exportGeneration,mode.value,translationJob.value,answer.value])}
 async function exportReport(format){
  if(!answer.value)return null
