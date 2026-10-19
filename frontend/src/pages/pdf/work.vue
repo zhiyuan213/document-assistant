@@ -52,15 +52,19 @@
 </template>
 <script setup>
 import {ref,computed,watch} from 'vue'
-import {onLoad,onUnload,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
+import {onLoad,onUnload,onHide,onShow,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-app'
 import PdfIcon from '../../components/PdfIcon.vue'
 import PdfActions from '../../components/PdfActions.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
 import {pdfRequest,submitPdf,savePdf} from '../../lib/pdf-api'
 import {selectionLimit,appendSelection,runPdfBatch,downloadBatch} from '../../lib/pdf-batch'
+import {createSmoothProgress} from '../../lib/pdf-progress'
 import {rememberExport,queueDownloads,completeDownloads} from '../../lib/pdf-export-history'
 import {pollPdfJob} from '../../lib/pdf-job'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),stagePercent=ref(0),stage=ref('正在上传文件…')
+const progressAnimation=createSmoothProgress({onChange:value=>{stagePercent.value=value}})
+onHide(()=>progressAnimation.pause())
+onShow(()=>progressAnimation.resume())
 const pages=ref(''),angle=ref(90),startNumber=ref('1'),numberPosition=ref('bottom')
 const cropMargins=ref({left:'5',right:'5',top:'5',bottom:'5'}),cropEdges=[{id:'left',title:'左边'},{id:'right',title:'右边'},{id:'top',title:'上边'},{id:'bottom',title:'下边'}]
 const signPage=ref('1'),signX=ref('60'),signY=ref('60'),signWidth=ref('25')
@@ -113,7 +117,7 @@ const pickerLabel=computed(()=>{
 })
 let alive=true
 onLoad(options=>{tool.value=pdfTools.find(t=>t.id===options.tool)||pdfTools[0];uni.setNavigationBarTitle({title:tool.value.title});liked.value=favorites().includes(tool.value.id)})
-onUnload(()=>{alive=false;clearPreviewFiles();password.value='';confirmation.value=''})
+onUnload(()=>{alive=false;progressAnimation.stop();clearPreviewFiles();password.value='';confirmation.value=''})
 onShareAppMessage(()=>pdfShare(tool.value));onAddToFavorites(()=>({title:tool.value.title,query:'tool='+tool.value.id}))
 function size(n){return n>1024*1024?(n/1024/1024).toFixed(1)+' MB':Math.ceil((n||0)/1024)+' KB'}
 function favorite(){liked.value=toggleFavorite(tool.value.id).includes(tool.value.id);uni.showToast({title:liked.value?'已收藏常用工具':'已取消收藏',icon:'none'})}
@@ -133,16 +137,17 @@ function choose(){
 function move(i){if(watermarkBusy.value)return;selected.value.splice(i-1,0,selected.value.splice(i,1)[0])}
 function chooseWatermark(){uni.chooseImage({count:1,success:r=>{const f=r.tempFiles[0];if(f.size>20*1024*1024){error.value='水印图片不能超过20MB';return}watermarkFile.value={path:f.path,size:f.size,name:'watermark.'+(f.path.split('.').pop()||'png')}}})}
 async function run(){if(busy.value||watermarkBusy.value||!selected.value.length)return;if(tool.value.id==='remove-watermark'&&!marksReady.value)return;error.value='';if(tool.value.id==='encrypt'&&(password.value.length<6||password.value.length>64)){error.value='密码需为 6 至 64 位';uni.showToast({title:error.value,icon:'none'});return}if(tool.value.id==='encrypt'&&password.value!==confirmation.value){error.value='两次密码不一致';return}if(['merge','compare'].includes(tool.value.id)&&selected.value.length<2){error.value='请选择至少两个PDF';return}if(tool.value.id==='split'&&splitMode.value==='ranges'&&!ranges.value.trim()){error.value='请输入页码范围';return}
- busy.value=true;stagePercent.value=0;stage.value='正在上传文件…'
+ busy.value=true;progressAnimation.start();stage.value='正在上传文件…'
  try{
   const options={...redactRegion.value,...cropMargins.value,signPage:signPage.value,signX:signX.value,signY:signY.value,signWidth:signWidth.value,pages:pages.value,angle:angle.value,start:startNumber.value,position:numberPosition.value,ranges:splitMode.value==='ranges'?ranges.value:'',orientation:orientation.value,format:format.value,text:watermark.value,password:password.value,compression:compression.value,imageOutput:imageOutput.value,watermarkMode:watermarkMode.value}
   const plans=Object.fromEntries(markFiles.value.map(plan=>[plan.path,{ids:[...plan.ids],proof:plan.proof}]))
   const batch=await runPdfBatch({tool:tool.value.id,title:tool.value.title,files:[...selected.value],options,imageFile:watermarkFile.value,watermarkPlans:plans,submit:submitPdf,active:()=>alive,
    poll:(id,onProgress)=>pollPdfJob(()=>pdfRequest('/jobs/'+id),{active:()=>alive,onProgress}),
-   onProgress:state=>{stagePercent.value=state.progress;stage.value='正在处理 '+(state.index+1)+' / '+state.total+'：'+state.name}})
+   onProgress:state=>{progressAnimation.update(state.progress,state.ceiling);stage.value=(state.phase==='uploading'?'正在上传 ':'正在处理 ')+(state.index+1)+' / '+state.total+'：'+state.name}})
+  if(alive)await progressAnimation.finish()
   if(alive){result.value=batch;const completed=new Set(batch.items.flatMap(item=>item.sources));selected.value=selected.value.filter(file=>!completed.has(file.path))}
   options.password=''
- }catch(e){error.value=e.message}finally{password.value='';confirmation.value='';busy.value=false}}
+ }catch(e){error.value=e.message}finally{progressAnimation.stop();password.value='';confirmation.value='';busy.value=false}}
 async function save(){
  if(saving.value||!result.value?.items.length)return
  saving.value=true;error.value=''

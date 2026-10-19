@@ -17,8 +17,10 @@ export async function runPdfBatch({ tool, title, files, options, imageFile, wate
   const items = [], failures = []
   for (let index = 0; index < groups.length && active(); index++) {
     const group = groups[index], source = group[0]
-    const report = progress => onProgress({ index, total: groups.length, name: source.name, progress: Math.round((index + progress / 100) / groups.length * 100) })
-    report(0)
+    const report = (progress, phase = 'processing') => onProgress({ index, total: groups.length, name: source.name, phase,
+      progress: Math.round((index + progress / 100) / groups.length * 100),
+      ceiling: Math.floor((index + (phase === 'uploading' ? 0.1 : progress === 100 ? 1 : 0.9)) / groups.length * 100) })
+    report(0, 'uploading')
     try {
       const parameters = { ...options }
       if (tool === 'images') parameters.imageOutput = 'merged'
