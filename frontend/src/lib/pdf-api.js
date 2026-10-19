@@ -72,7 +72,7 @@ async function postPdfAi(path, mode, files, prompt, page, targetLanguage, reques
 export function estimatePdfAi(mode, files, prompt = '', page = 1, targetLanguage = 'zh-CN') { return postPdfAi('/ai/estimate', mode, files, prompt, page, targetLanguage) }
 export function submitPdfAi(mode, files, prompt = '', page = 1, targetLanguage = 'zh-CN', requestId = '') { return postPdfAi('/ai', mode, files, prompt, page, targetLanguage, requestId) }
 export async function savePdf(job) {
-  const url = baseURL + '/api/pdf/jobs/' + job.id + '/file', header = { Authorization: 'Bearer ' + uni.getStorageSync(tokenKey) }, name = '登科喵结果.' + job.extension
+  const url = baseURL + '/api/pdf/jobs/' + job.id + '/file', header = { Authorization: 'Bearer ' + uni.getStorageSync(tokenKey) }, name = job.name || '登科喵结果.' + job.extension
   // #ifdef H5
   const response = await fetch(url, { headers: header }); if (!response.ok) throw new Error('文件已过期或下载失败')
   const object = URL.createObjectURL(await response.blob()), a = document.createElement('a'); a.href = object; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(object), 30000)

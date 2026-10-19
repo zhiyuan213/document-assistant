@@ -7,32 +7,6 @@ source = source.replace("import { cloudEnabled, cloudRequest } from './cloud-tra
 source = source.replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
 const { openSavedPdf, savePdf, shareSavedFile, saveFileToPhone } = await import('data:text/javascript,' + encodeURIComponent(source))
 const file = { path: '/test/result.zip', name: 'result.zip', extension: 'zip' }
-const workSource = await readFile(new URL('../frontend/src/pages/pdf/work.vue', import.meta.url), 'utf8')
-const forwardSource = workSource.slice(workSource.indexOf('function forwardResult(){'), workSource.indexOf('function again(){'))
-function forwardHandler({ prepared = file, save = async () => {}, share = async () => {} } = {}) {
-  const state = { saving: { value: false }, sharing: { value: false }, error: { value: '' }, preparedFile: { value: prepared } }
-  const forward = new Function('saving', 'sharing', 'error', 'preparedFile', 'save', 'shareSavedFile', forwardSource + '; return forwardResult')(
-    state.saving, state.sharing, state.error, state.preparedFile, save, share)
-  return { ...state, forward }
-}
-test('free tool forwarding opens the chooser during the original tap and prevents double taps', async () => {
-  const oldUni = globalThis.uni; globalThis.uni = { showToast() {} }
-  let finish, called = 0
-  const handler = forwardHandler({ save() { assert.fail('prepared files must not download again') }, share(value) { assert.equal(value, file); called++; return new Promise(resolve => { finish = resolve }) } })
-  try {
-    const pending = handler.forward(); assert.equal(called, 1); handler.forward(); assert.equal(called, 1)
-    finish(); await pending; assert.equal(handler.sharing.value, false)
-  } finally { globalThis.uni = oldUni }
-})
-test('free tool forwarding prepares missing files and waits for another tap before sharing', async () => {
-  const oldUni = globalThis.uni; let toast; globalThis.uni = { showToast(o) { toast = o.title } }
-  let handler, called = 0
-  handler = forwardHandler({ prepared: null, async save() { handler.preparedFile.value = file }, async share() { called++ } })
-  try {
-    await handler.forward(); assert.equal(called, 0); assert.match(toast, /再次点击/)
-    await handler.forward(); assert.equal(called, 1)
-  } finally { globalThis.uni = oldUni }
-})
 test('translated text files use sharing because WeChat openDocument does not support txt',async()=>{
  let shared=false
  await openSavedPdf({...file,extension:'txt'}, {shareFileMessage(options){shared=true;options.success({})},openDocument(){throw Error('txt cannot be opened as a document')}})

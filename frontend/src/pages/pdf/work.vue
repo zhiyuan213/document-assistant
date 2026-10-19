@@ -4,7 +4,8 @@
     <view v-if="error" class="error-message" role="alert">{{error}}</view>
     <template v-if="!busy && !result">
       <view class="intro"><view class="intro-icon"><PdfIcon :label="tool.label" :color="tool.color"/></view><view class="intro-title">{{ tool.title }}</view><text>{{ tool.hint }}</text></view>
-      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? (['merge','images','compare'].includes(tool.id) ? '继续添加文件' : '更换文件') : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB</text></view>
+      <view class="upload-box" @click="choose"><view class="cloud-upload">☁ ↑</view><view class="upload-name">{{ selected.length ? '继续添加文件' : pickerLabel }}</view><text>支持 {{ tool.accept.join('、').toUpperCase() }} · 单个最大 20MB · 已选 {{selected.length}} / {{selectionLimit(tool.id)}}</text></view>
+      <view v-if="!['merge','images','compare'].includes(tool.id)" class="pdf-tip">支持批量处理，每个文件单独生成结果；当前设置应用于本批文件。</view>
       <view v-if="tool.id==='merge'" class="pdf-tip">带密码的 PDF 无法直接合并，请先使用“PDF 解密”，再选择解密后的文件合并。<text class="decrypt-link" @click="uni.navigateTo({url:'/pages/pdf/work?tool=decrypt'})">去解密 ›</text></view>
       <!-- #ifdef MP-WEIXIN -->
       <view v-if="tool.id !== 'images'" class="pdf-tip">从微信聊天选择文件；手机文件可先发到文件传输助手。</view>
@@ -25,28 +26,28 @@
       <view v-if="['encrypt','decrypt'].includes(tool.id)" class="options"><view class="option-title">{{tool.id==='encrypt'?'设置密码':'输入有效密码'}}</view><input v-model="password" password maxlength="64" placeholder="请输入密码"/><input v-if="tool.id==='encrypt'" v-model="confirmation" password placeholder="再次输入密码"/></view>
       <view v-if="tool.id==='remove-watermark' && selected.length" class="options">
        <button class="ui-button ui-button-secondary" :disabled="watermarkBusy" @click="inspectMarks">{{watermarkBusy?'正在处理…':'检测独立水印'}}</button>
-       <view class="pdf-tip" v-if="markMessage">{{markMessage}}</view>
-       <view v-for="item in markCandidates" :key="item.id" class="mark-option" @click="toggleMark(item.id)"><text>{{markIds.includes(item.id)?'☑':'☐'}} 第 {{item.page}} 页 · {{item.kind}}</text></view>
-       <button v-if="markIds.length" class="ui-button ui-button-secondary" :disabled="watermarkBusy" @click="previewMarks">预览去除效果</button>
-       <view v-for="item in markPreviews" :key="item.page"><view class="option-title">第 {{item.page}} 页：处理前 / 处理后</view><view class="mark-previews"><image :src="item.before" mode="widthFix" @click="showMark(item.before)"/><image :src="item.after" mode="widthFix" @click="showMark(item.after)"/></view></view>
-       <view v-if="previewProof" class="pdf-tip">请放大核对正文、图表是否完整。确认无误后点击下方按钮；原文件保持不变。</view>
+       <view v-for="plan in markFiles" :key="plan.path" class="mark-file">
+        <view class="option-title">{{plan.name}}</view><view class="pdf-tip">{{plan.message}}</view>
+        <view v-for="item in plan.candidates" :key="item.id" class="mark-option" @click="toggleMark(plan,item.id)"><text>{{plan.ids.includes(item.id)?'☑':'☐'}} 第 {{item.page}} 页 · {{item.kind}}</text></view>
+        <button v-if="plan.ids.length" class="ui-button ui-button-secondary" :disabled="watermarkBusy" @click="previewMarks(plan)">预览此文件去除效果</button>
+        <view v-for="item in plan.previews" :key="item.page"><view class="option-title">第 {{item.page}} 页：处理前 / 处理后</view><view class="mark-previews"><image :src="item.before" mode="widthFix" @click="showMark(item.before)"/><image :src="item.after" mode="widthFix" @click="showMark(item.after)"/></view></view>
+        <view v-if="plan.proof" class="pdf-tip">预览已准备好，请放大核对正文、图表是否完整。所有文件预览无误后再确认处理。</view>
+       </view>
       </view>
       <view class="free-tip">基础 PDF 工具永久免费 · 不限次数</view>
-      <button class="ui-button pdf-primary" :disabled="!selected.length || watermarkBusy || (tool.id==='remove-watermark' && !previewProof)" @click="run">{{tool.id==='remove-watermark'?'确认去除并生成新 PDF':'开始'+(tool.id==='merge'?'合并':tool.id==='split'?'拆分':'处理')}}</button>
+      <button class="ui-button pdf-primary" :disabled="!selected.length || watermarkBusy || (tool.id==='remove-watermark' && !marksReady)" @click="run">{{tool.id==='remove-watermark'?'确认去除并生成新 PDF':'开始'+(tool.id==='merge'?'合并':tool.id==='split'?'拆分':'处理')}}</button>
       <view class="pdf-tip">文件仅用于本次处理，结果 30 分钟后自动删除。请及时保存到手机。密码不写入数据库。</view>
     </template>
     <view v-else-if="busy" class="processing"><image src="/static/brand/pdf-cat.png" mode="aspectFit"/><view class="progress-circle">{{ stagePercent === 0 ? '上传中' : stagePercent+'%' }}</view><view class="intro-title">{{ stage }}</view><text class="muted">进度反映处理阶段，复杂文件请耐心等待</text><view class="pdf-tip">{{ selected[0]?.name }}<br/>请保持页面打开，处理后及时下载</view></view>
     <view v-else class="result">
-      <view class="success-mark">✓</view><view class="intro-title">处理完成！</view><view class="muted">结果可下载，30 分钟后自动删除</view>
-      <view class="result-file"><PdfIcon :label="result.extension.toUpperCase()" :color="tool.color"/><view><text>登科喵结果.{{result.extension}}</text><view class="muted">{{size(result.size_bytes)}}</view></view></view>
-      <button class="ui-button pdf-primary" :loading="saving" :disabled="saving || sharing" @click="save">下载文件</button>
-      <!-- #ifdef MP-WEIXIN -->
-      <button class="ui-button ui-button-secondary pdf-secondary" :loading="sharing" :disabled="saving || sharing" @click="forwardResult">转发给微信好友</button>
-      <!-- #endif -->
-      <button v-if="preparedFile && !['zip','txt'].includes(preparedFile.extension)" class="ui-button pdf-primary" :disabled="saving || sharing" @click="openPrepared">打开文件</button>
-      <view v-if="preparedFile" class="muted">{{preparedFile.extension==='txt'?'可转发到文件传输助手，再打开或保存TXT文件':preparedFile.extension==='zip'?'可转发到文件传输助手，再保存或解压':'可直接转发文件，或打开后使用右上角菜单保存'}}</view>
-      <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving || sharing" @click="again">再处理一个</button>
-      <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving || sharing" @click="openTools">转换其他格式</button>
+      <view class="success-mark">{{result.items.length?'✓':'!'}}</view><view class="intro-title">{{result.failures.length?'本批处理结束':'处理完成！'}}</view>
+      <view class="muted">成功 {{result.items.length}} 个，失败 {{result.failures.length}} 个 · 结果保留30分钟</view>
+      <view v-for="item in result.items" :key="item.job.id" class="result-file"><PdfIcon :label="item.job.extension.toUpperCase()" :color="tool.color"/><view><text>{{item.name}}</text><view class="muted">{{size(item.job.size_bytes)}}</view></view></view>
+      <view v-for="item in result.failures" :key="item.sources.join('|')" class="error-message">{{item.name}}：{{item.message}}</view>
+      <button v-if="result.items.length" class="ui-button pdf-primary" :loading="saving" :disabled="saving" @click="save">{{saving?downloadStage:'下载文件'}}</button>
+      <view v-if="result.items.length" class="muted">下载后进入文件列表，可多选转发保存</view>
+      <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving" @click="again">{{selected.length?'重试未完成文件':'再处理一批'}}</button>
+      <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving" @click="openTools">转换其他格式</button>
     </view>
   </view>
 </template>
@@ -56,27 +57,41 @@ import {onLoad,onUnload,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-
 import PdfIcon from '../../components/PdfIcon.vue'
 import PdfActions from '../../components/PdfActions.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
-import {pdfRequest,submitPdf,savePdf,openSavedPdf,shareSavedFile} from '../../lib/pdf-api'
-import {rememberExport} from '../../lib/pdf-export-history'
+import {pdfRequest,submitPdf,savePdf} from '../../lib/pdf-api'
+import {selectionLimit,appendSelection,runPdfBatch,downloadBatch} from '../../lib/pdf-batch'
+import {rememberExport,queueDownloads,completeDownloads} from '../../lib/pdf-export-history'
 import {pollPdfJob} from '../../lib/pdf-job'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),stagePercent=ref(0),stage=ref('正在上传文件…')
 const pages=ref(''),angle=ref(90),startNumber=ref('1'),numberPosition=ref('bottom')
 const cropMargins=ref({left:'5',right:'5',top:'5',bottom:'5'}),cropEdges=[{id:'left',title:'左边'},{id:'right',title:'右边'},{id:'top',title:'上边'},{id:'bottom',title:'下边'}]
 const signPage=ref('1'),signX=ref('60'),signY=ref('60'),signWidth=ref('25')
 const redactRegion=ref({redactX:'10',redactY:'10',redactWidth:'30',redactHeight:'10'}),redactFields=[{id:'redactX',title:'从左'},{id:'redactY',title:'从上'},{id:'redactWidth',title:'宽度'},{id:'redactHeight',title:'高度'}]
-const preparedFile=ref(null)
-const sharing=ref(false)
+const downloadStage=ref('正在下载…')
 const previewPaths=[]
 function clearPreviewFiles(){
  // #ifdef MP-WEIXIN
  for(const filePath of previewPaths.splice(0))wx.getFileSystemManager().unlink({filePath,fail:()=>{}})
  // #endif
 }
-const markCandidates=ref([]),markIds=ref([]),markPreviews=ref([]),previewProof=ref(''),markMessage=ref(''),watermarkBusy=ref(false)
-watch(()=>selected.value.map(f=>f.path).join('|'),()=>{clearPreviewFiles();markCandidates.value=[];markIds.value=[];markPreviews.value=[];previewProof.value='';markMessage.value=''})
-function toggleMark(id){if(watermarkBusy.value)return;markIds.value=markIds.value.includes(id)?markIds.value.filter(x=>x!==id):[...markIds.value,id];markPreviews.value=[];previewProof.value=''}
-async function inspectMarks(){if(watermarkBusy.value)return;watermarkBusy.value=true;error.value='';previewProof.value='';markPreviews.value=[];markIds.value=[];try{const r=await submitPdf('remove-watermark',selected.value,{},'/watermarks/inspect');markCandidates.value=r.candidates;markMessage.value=r.message}catch(e){error.value=e.message}finally{watermarkBusy.value=false}}
-async function previewMarks(){if(watermarkBusy.value)return;watermarkBusy.value=true;error.value='';previewProof.value='';clearPreviewFiles();try{const r=await submitPdf('remove-watermark',selected.value,{candidateIds:markIds.value.join(',')},'/watermarks/preview');markPreviews.value=await Promise.all(r.previews.map(async item=>({...item,before:await previewImage(item.before),after:await previewImage(item.after)})));previewProof.value=r.proof}catch(e){error.value=e.message}finally{watermarkBusy.value=false}}
+const markFiles=ref([]),watermarkBusy=ref(false)
+const marksReady=computed(()=>selected.value.length>0&&selected.value.every(file=>markFiles.value.some(plan=>plan.path===file.path&&plan.proof)))
+watch(()=>selected.value.map(f=>f.path).join('|'),()=>{clearPreviewFiles();markFiles.value=[]})
+function toggleMark(plan,id){if(watermarkBusy.value)return;plan.ids=plan.ids.includes(id)?plan.ids.filter(x=>x!==id):[...plan.ids,id];plan.previews=[];plan.proof=''}
+async function inspectMarks(){
+ if(watermarkBusy.value)return
+ watermarkBusy.value=true;error.value='';clearPreviewFiles();markFiles.value=[]
+ try{for(const file of selected.value){
+  if(!alive)break
+  const plan={path:file.path,name:file.name,candidates:[],ids:[],previews:[],proof:'',message:''}
+  try{const r=await submitPdf('remove-watermark',[file],{},'/watermarks/inspect');plan.candidates=r.candidates;plan.message=r.message}catch(e){plan.message=e.message}
+  markFiles.value.push(plan)
+ }}finally{watermarkBusy.value=false}
+}
+async function previewMarks(plan){
+ if(watermarkBusy.value)return
+ watermarkBusy.value=true;error.value='';plan.proof='';plan.previews=[]
+ try{const file=selected.value.find(file=>file.path===plan.path);if(!file)return;const r=await submitPdf('remove-watermark',[file],{candidateIds:plan.ids.join(',')},'/watermarks/preview');plan.previews=await Promise.all(r.previews.map(async item=>({...item,before:await previewImage(item.before),after:await previewImage(item.after)})));plan.proof=r.proof}catch(e){error.value=e.message}finally{watermarkBusy.value=false}
+}
 async function previewImage(data){
  // #ifdef MP-WEIXIN
  const path=wx.env.USER_DATA_PATH+'/watermark-preview-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.png'
@@ -104,8 +119,9 @@ onShareAppMessage(()=>pdfShare(tool.value));onAddToFavorites(()=>({title:tool.va
 function size(n){return n>1024*1024?(n/1024/1024).toFixed(1)+' MB':Math.ceil((n||0)/1024)+' KB'}
 function favorite(){liked.value=toggleFavorite(tool.value.id).includes(tool.value.id);uni.showToast({title:liked.value?'已收藏常用工具':'已取消收藏',icon:'none'})}
 function choose(){
- const max=tool.value.id==='compare'?2:tool.value.id==='merge'?10:tool.value.id==='images'?20:1
- const success=r=>{const files=r.tempFiles.map(f=>({path:f.path||f.tempFilePath,name:f.name||('image.'+(f.path?.split('.').pop()||'jpg')),size:f.size}));if(files.some(f=>f.size>20*1024*1024)){uni.showToast({title:'单个文件不能超过20MB',icon:'none'});return}selected.value=max===1?files.slice(0,1):[...selected.value,...files].slice(0,max);error.value=''}
+ if(watermarkBusy.value||busy.value)return
+ const max=selectionLimit(tool.value.id)
+ const success=r=>{const files=r.tempFiles.map(f=>({path:f.path||f.tempFilePath,name:f.name||('image.'+(f.path?.split('.').pop()||'jpg')),size:f.size}));try{selected.value=appendSelection(selected.value,files,tool.value.id);error.value=''}catch(e){error.value=e.message}}
  if(selected.value.length>=max&&max>1){uni.showToast({title:'已达到文件数量上限',icon:'none'});return}
  if(tool.value.id==='images'){uni.chooseImage({count:Math.min(9,max-selected.value.length),success});return}
  // #ifdef H5
@@ -115,27 +131,38 @@ function choose(){
  wx.chooseMessageFile({count:Math.max(1,max-selected.value.length),type:'file',extension:tool.value.accept,success,fail:r=>{if(!String(r.errMsg||'').includes('cancel'))error.value='文件选择失败，请确认文件已下载到微信聊天中，再重试'}})
  // #endif
 }
-function move(i){selected.value.splice(i-1,0,selected.value.splice(i,1)[0])}
+function move(i){if(watermarkBusy.value)return;selected.value.splice(i-1,0,selected.value.splice(i,1)[0])}
 function chooseWatermark(){uni.chooseImage({count:1,success:r=>{const f=r.tempFiles[0];if(f.size>20*1024*1024){error.value='水印图片不能超过20MB';return}watermarkFile.value={path:f.path,size:f.size,name:'watermark.'+(f.path.split('.').pop()||'png')}}})}
-async function run(){if(busy.value||watermarkBusy.value)return;if(tool.value.id==='remove-watermark'&&!previewProof.value)return;error.value='';if(tool.value.id==='encrypt'&&(password.value.length<6||password.value.length>64)){error.value='密码需为 6 至 64 位';uni.showToast({title:error.value,icon:'none'});return}if(tool.value.id==='encrypt'&&password.value!==confirmation.value){error.value='两次密码不一致';return}if(['merge','compare'].includes(tool.value.id)&&selected.value.length<2){error.value='请选择至少两个PDF';return}if(tool.value.id==='split'&&splitMode.value==='ranges'&&!ranges.value.trim()){error.value='请输入页码范围';return}
+async function run(){if(busy.value||watermarkBusy.value||!selected.value.length)return;if(tool.value.id==='remove-watermark'&&!marksReady.value)return;error.value='';if(tool.value.id==='encrypt'&&(password.value.length<6||password.value.length>64)){error.value='密码需为 6 至 64 位';uni.showToast({title:error.value,icon:'none'});return}if(tool.value.id==='encrypt'&&password.value!==confirmation.value){error.value='两次密码不一致';return}if(['merge','compare'].includes(tool.value.id)&&selected.value.length<2){error.value='请选择至少两个PDF';return}if(tool.value.id==='split'&&splitMode.value==='ranges'&&!ranges.value.trim()){error.value='请输入页码范围';return}
  busy.value=true;stagePercent.value=0;stage.value='正在上传文件…'
- try{const imageMark=tool.value.id==='sign'||tool.value.id==='watermark'&&watermarkMode.value==='image';if(imageMark&&!watermarkFile.value)throw new Error(tool.value.id==='sign'?'请选择签名图片':'请选择水印图片');const created=await submitPdf(tool.value.id,imageMark?[...selected.value,watermarkFile.value]:selected.value,{candidateIds:markIds.value.join(','),previewProof:previewProof.value,...redactRegion.value,...cropMargins.value,signPage:signPage.value,signX:signX.value,signY:signY.value,signWidth:signWidth.value,pages:pages.value,angle:angle.value,start:startNumber.value,position:numberPosition.value,ranges:splitMode.value==='ranges'?ranges.value:'',orientation:orientation.value,format:format.value,text:watermark.value,password:password.value,compression:compression.value,imageOutput:imageOutput.value,watermarkMode:watermarkMode.value});password.value='';confirmation.value='';
-  const job=await pollPdfJob(()=>pdfRequest('/jobs/'+created.id),{active:()=>alive,onProgress:job=>{stagePercent.value=job.progress;stage.value=job.status==='syncing'?'文件已上传，正在同步任务状态…':job.status==='queued'?'文件已上传，等待处理…':'正在处理文件…'}})
-  if(job){result.value=job;selected.value=[]}
- }catch(e){error.value=e.message;if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}finally{busy.value=false}}
-async function save(){if(saving.value)return;saving.value=true;error.value='';try{preparedFile.value=rememberExport(await savePdf(result.value),{name:tool.value.title+'.'+result.value.extension,expiresAt:result.value.expiresAt||result.value.expires_at,inputTokens:0,outputTokens:0})||null;if(preparedFile.value)uni.showToast({title:'已下载，请点击下方打开或发送',icon:'none'})}catch(e){error.value=e.message||'下载失败，请重试'}finally{saving.value=false}}
-function openPrepared(){error.value='';openSavedPdf(preparedFile.value).catch(e=>{if(!e.cancelled)error.value=e.message})}
-function forwardResult(){
- if(saving.value||sharing.value)return
- error.value=''
- if(!preparedFile.value){
-  return save().then(()=>{if(preparedFile.value)uni.showToast({title:'文件已准备好，请再次点击转发',icon:'none'})})
- }
- sharing.value=true
- // Invoke the native friend chooser directly from this tap, without awaiting a download.
- return shareSavedFile(preparedFile.value).then(()=>uni.showToast({title:'转发成功',icon:'none'})).catch(e=>{if(!e.cancelled)error.value=e.message}).finally(()=>{sharing.value=false})
+ try{
+  const options={...redactRegion.value,...cropMargins.value,signPage:signPage.value,signX:signX.value,signY:signY.value,signWidth:signWidth.value,pages:pages.value,angle:angle.value,start:startNumber.value,position:numberPosition.value,ranges:splitMode.value==='ranges'?ranges.value:'',orientation:orientation.value,format:format.value,text:watermark.value,password:password.value,compression:compression.value,imageOutput:imageOutput.value,watermarkMode:watermarkMode.value}
+  const plans=Object.fromEntries(markFiles.value.map(plan=>[plan.path,{ids:[...plan.ids],proof:plan.proof}]))
+  const batch=await runPdfBatch({tool:tool.value.id,title:tool.value.title,files:[...selected.value],options,imageFile:watermarkFile.value,watermarkPlans:plans,submit:submitPdf,active:()=>alive,
+   poll:(id,onProgress)=>pollPdfJob(()=>pdfRequest('/jobs/'+id),{active:()=>alive,onProgress}),
+   onProgress:state=>{stagePercent.value=state.progress;stage.value='正在处理 '+(state.index+1)+' / '+state.total+'：'+state.name}})
+  if(alive){result.value=batch;const completed=new Set(batch.items.flatMap(item=>item.sources));selected.value=selected.value.filter(file=>!completed.has(file.path))}
+  options.password=''
+ }catch(e){error.value=e.message}finally{password.value='';confirmation.value='';busy.value=false}}
+async function save(){
+ if(saving.value||!result.value?.items.length)return
+ saving.value=true;error.value=''
+ try{
+  // #ifdef H5
+  for(const item of result.value.items)await savePdf({...item.job,name:item.name})
+  uni.showToast({title:'已开始下载',icon:'none'});return
+  // #endif
+  // #ifdef MP-WEIXIN
+  queueDownloads(result.value.items)
+  const downloaded=await downloadBatch(result.value.items,{save:savePdf,remember:rememberExport,active:()=>alive,onProgress:(index,total)=>{downloadStage.value='正在下载 '+index+' / '+total}})
+  completeDownloads(downloaded.saved.map(file=>file.jobId))
+  if(!alive)return
+  if(downloaded.failures.length){error.value=downloaded.failures.map(item=>item.name+'：'+item.message).join('\n');uni.showToast({title:'部分文件下载失败，可在文件列表重试',icon:'none'})}
+  if(downloaded.saved.length){uni.setStorageSync('pdf-export-selected',downloaded.saved.map(file=>file.path));await uni.switchTab({url:'/pages/pdf/exports'})}
+  // #endif
+ }catch(e){error.value=e.message||'下载失败，请重试'}finally{saving.value=false}
 }
-function again(){result.value=null;preparedFile.value=null;error.value=''}
+function again(){result.value=null;error.value=''}
 function openTools(){uni.switchTab({url:'/pages/tools/index'})}
 </script>
 <style scoped>
