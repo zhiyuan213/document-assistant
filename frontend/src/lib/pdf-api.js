@@ -1,4 +1,9 @@
 import { baseURL } from './api'
+import { cloudEnabled, cloudRequest } from './cloud-transport'
+function request(options) {
+  if (cloudEnabled()) return cloudRequest({ ...options, url: options.url.slice(baseURL.length) })
+  return new Promise((resolve, reject) => uni.request({ ...options, success: resolve, fail: e => reject(networkError(e)) }))
+}
 let creating
 const tokenKey = 'pdf-visitor-token-v1'
 function networkError(result) {
@@ -9,11 +14,9 @@ function networkError(result) {
   return new Error('手机未能连接处理服务，请检查网络及小程序合法域名后重试')
 }
 function raw(path, method = 'GET', data, header = {}) {
-  return new Promise((resolve, reject) => uni.request({ url: baseURL + '/api/pdf' + path, method, data, timeout: 120000,
+  return request({ url: baseURL + '/api/pdf' + path, method, data, timeout: 120000,
     header: { Authorization: 'Bearer ' + (uni.getStorageSync(tokenKey) || ''), ...header },
-    success: r => { if (r.statusCode >= 200 && r.statusCode < 300) resolve(r.data); else { const e = new Error(r.data?.message || '请求失败，请重试'); e.status = r.statusCode; reject(e) } },
-    fail: result => reject(networkError(result)),
-  }))
+  }).then(r => { if (r.statusCode >= 200 && r.statusCode < 300) return r.data; const e = new Error(r.data?.message || '请求失败，请重试'); e.status = r.statusCode; throw e })
 }
 export async function visitor() {
   if (uni.getStorageSync(tokenKey)) return
@@ -82,10 +85,10 @@ export async function savePdf(job) {
   if (!exists) {
     // Download to a named file directly; ZIP is shared rather than opened as a document.
     let result
-    try { result = await new Promise((resolve, reject) => uni.downloadFile({ url, header, filePath: path, timeout: 120000, success: resolve, fail: reject })) }
+    try { if (cloudEnabled()) throw new Error('cloud download'); result = await new Promise((resolve, reject) => uni.downloadFile({ url, header, filePath: path, timeout: 120000, success: resolve, fail: reject })) }
     catch {
       // request and downloadFile have separate domain lists in WeChat.
-      const response = await new Promise((resolve, reject) => uni.request({ url, header, responseType: 'arraybuffer', timeout: 120000, success: resolve, fail: e => reject(networkError(e)) }))
+      const response = await request({ url, header, responseType: 'arraybuffer', timeout: 120000 })
       if (response.statusCode !== 200) throw new Error(response.statusCode === 410 ? '服务器临时文件已清理，请重新处理' : response.statusCode === 404 ? '结果已过期或不存在，请重新处理' : '下载失败（HTTP ' + response.statusCode + '），请重试')
       await new Promise((resolve, reject) => fs.writeFile({ filePath: path, data: response.data, success: resolve, fail: e => reject(fileError('保存文件', e)) }))
       return { path, name, extension: job.extension }
@@ -166,7 +169,7 @@ export async function exportAiReport(content, format, translationJobId = '', mod
  const object=URL.createObjectURL(await response.blob()),a=document.createElement('a');a.href=object;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(object),30000)
  // #endif
  // #ifdef MP-WEIXIN
- const response=await new Promise((resolve,reject)=>uni.request({url,method:translated?'GET':'POST',header,...(translated?{}:{data:{content,format,mode}}),responseType:'arraybuffer',timeout:120000,success:resolve,fail:e=>reject(networkError(e))}))
+ const response=await request({url,method:translated?'GET':'POST',header,...(translated?{}:{data:{content,format,mode}}),responseType:'arraybuffer',timeout:120000})
  if(response.statusCode!==200)throw new Error('导出失败（HTTP '+response.statusCode+'），请稍后重试')
  const path=wx.env.USER_DATA_PATH+'/ai-report-'+Date.now()+'.'+format
  await new Promise((resolve,reject)=>wx.getFileSystemManager().writeFile({filePath:path,data:response.data,success:resolve,fail:e=>reject(fileError('保存文件',e))}))

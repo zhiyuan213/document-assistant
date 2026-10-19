@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 let source = await readFile(new URL('../frontend/src/lib/pdf-api.js', import.meta.url), 'utf8')
 source = source.replace("import { baseURL } from './api'", "const baseURL = 'https://test.invalid'")
+source = source.replace("import { cloudEnabled, cloudRequest } from './cloud-transport'", "const cloudEnabled = () => false")
 source = source.replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g, '')
 const { openSavedPdf, savePdf, shareSavedFile, saveFileToPhone } = await import('data:text/javascript,' + encodeURIComponent(source))
 const file = { path: '/test/result.zip', name: 'result.zip', extension: 'zip' }
