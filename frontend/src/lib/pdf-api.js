@@ -171,7 +171,7 @@ export async function exportAiReport(content, format, translationJobId = '', mod
  // #ifdef MP-WEIXIN
  const response=await request({url,method:translated?'GET':'POST',header,...(translated?{}:{data:{content,format,mode}}),responseType:'arraybuffer',timeout:120000})
  if(response.statusCode!==200)throw new Error('导出失败（HTTP '+response.statusCode+'），请稍后重试')
- const path=wx.env.USER_DATA_PATH+'/ai-report-'+Date.now()+'.'+format
+ const path=wx.env.USER_DATA_PATH+'/ai-report-'+Date.now()+'-'+Math.random().toString(36).slice(2)+'.'+format
  await new Promise((resolve,reject)=>wx.getFileSystemManager().writeFile({filePath:path,data:response.data,success:resolve,fail:e=>reject(fileError('保存文件',e))}))
  return {path,name,extension:format}
  // #endif
