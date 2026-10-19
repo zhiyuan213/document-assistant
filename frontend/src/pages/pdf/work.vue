@@ -45,7 +45,6 @@
       <view v-for="item in result.items" :key="item.job.id" class="result-file"><PdfIcon :label="item.job.extension.toUpperCase()" :color="tool.color"/><view><text>{{item.name}}</text><view class="muted">{{size(item.job.size_bytes)}}</view></view></view>
       <view v-for="item in result.failures" :key="item.sources.join('|')" class="error-message">{{item.name}}：{{item.message}}</view>
       <button v-if="result.items.length" class="ui-button pdf-primary" :loading="saving" :disabled="saving" @click="save">{{saving?downloadStage:'下载文件'}}</button>
-      <view v-if="result.items.length" class="muted">下载后进入文件列表，可多选转发保存</view>
       <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving" @click="again">{{selected.length?'重试未完成文件':'再处理一批'}}</button>
       <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving" @click="openTools">转换其他格式</button>
     </view>
