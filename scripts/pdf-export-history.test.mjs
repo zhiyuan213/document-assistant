@@ -5,8 +5,9 @@ import vm from 'node:vm'
 const source=(await readFile(new URL('../frontend/src/lib/pdf-export-history.js',import.meta.url),'utf8')).replace(/export /g,'')
 function history(){
  const store=new Map(),removed=[]
- const context={uni:{getStorageSync:key=>store.get(key),setStorageSync:(key,value)=>store.set(key,value)},wx:{env:{USER_DATA_PATH:'/data'},getFileSystemManager:()=>({unlinkSync:path=>removed.push(path)})}}
- return {...vm.runInNewContext(source+'\n({rememberExport,listExportFiles,exportExpiry,resolveExportSelection,toggleExportSelection,pendingDownloads,queueDownloads,completeDownloads})',context),store,removed}
+ const fs={unlinkSync:path=>removed.push(path),readdirSync:()=>[]}
+ const context={uni:{getStorageSync:key=>store.get(key),setStorageSync:(key,value)=>store.set(key,value)},wx:{env:{USER_DATA_PATH:'/data'},getFileSystemManager:()=>fs}}
+ return {...vm.runInNewContext(source+'\n({rememberExport,listExportFiles,exportExpiry,resolveExportSelection,toggleExportSelection,pendingDownloads,queueDownloads,completeDownloads})',context),store,removed,fs}
 }
 test('exports persist in newest-first order with usage and retain the original expiry on repeated sharing',()=>{
  const h=history(),file={path:'/data/ai-report-1.pdf',name:'first.pdf',extension:'pdf'}
@@ -42,4 +43,10 @@ test('pending downloads survive navigation, deduplicate job IDs and retain origi
  assert.equal(h.pendingDownloads(now+1000).length,1);assert.equal(h.pendingDownloads(now+1000)[0].expiresAt,Date.parse(expiresAt))
  h.completeDownloads(['job-a']);assert.equal(h.pendingDownloads(now+2000).length,0)
  h.queueDownloads([item],now);assert.equal(h.pendingDownloads(now+70000).length,0)
+})
+test('handed-off ZIP files survive before expiry and are removed at their original expiry',()=>{
+ const h=history()
+ h.fs.readdirSync=()=>['dengke-bundle-2000-abc.zip','dengke-bundle-9000-xyz.zip','private.zip']
+ h.listExportFiles(1000);assert.equal(h.removed.length,0)
+ h.listExportFiles(2000);assert.deepEqual(h.removed,['/data/dengke-bundle-2000-abc.zip'])
 })

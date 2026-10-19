@@ -56,8 +56,16 @@ export async function createFileBundle(files, platform = wx, now = Date.now()) {
     for (const entry of central) { await append(entry); offset += entry.length }
     const end = record(22); end.view.setUint32(0, 0x06054b50, true); end.view.setUint16(8, files.length, true); end.view.setUint16(10, files.length, true)
     end.view.setUint32(12, offset - start, true); end.view.setUint32(16, start, true); await append(end.bytes)
+    const written = await invoke('stat', { path })
+    if (written.stats.size !== offset + end.bytes.length) throw new Error('压缩包写入不完整，请重新打包')
     if (expiresAt <= Date.now()) throw new Error('选中的文件已过期，请重新处理')
-    return { path, name: '登科喵文件合集.zip', extension: 'zip', expiresAt }
+    return { path, name: '登科喵文件合集.zip', extension: 'zip', expiresAt, size: written.stats.size }
   } catch (error) { try { fs.unlinkSync(path) } catch {} throw error }
 }
-export function discardBundle(file, platform = wx) { if (file?.path?.startsWith(platform.env.USER_DATA_PATH + '/dengke-bundle-')) try { platform.getFileSystemManager().unlinkSync(file.path) } catch {} }
+// A native success callback does not establish that WeChat finished reading the file.
+// Preserve a handed-off archive for delayed reads and chat retries; expiry cleanup owns deletion.
+export function retainBundle(file) { if (file) file.handedToWechat = true; return file }
+export function discardBundle(file, platform = wx) {
+  if (file?.handedToWechat) return
+  if (file?.path?.startsWith(platform.env.USER_DATA_PATH + '/dengke-bundle-')) try { platform.getFileSystemManager().unlinkSync(file.path) } catch {}
+}

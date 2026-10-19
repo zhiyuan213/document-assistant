@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 const load=async file=>import('data:text/javascript,'+encodeURIComponent(await readFile(new URL('../frontend/src/lib/'+file,import.meta.url),'utf8')))
 const {runPdfBatch,downloadBatch,appendSelection,selectionLimit}=await load('pdf-batch.js')
-const {createFileBundle,crc32,archiveNames,bundleKey}=await load('pdf-file-bundle.js')
+const {createFileBundle,crc32,archiveNames,bundleKey,discardBundle,retainBundle}=await load('pdf-file-bundle.js')
 const {resolveExportSelection}=await load('pdf-export-history.js')
 const {pdfTools}=await load('pdf-tools.js')
 const inputs=[{path:'/a',name:'合同.pdf',size:3},{path:'/b',name:'合同.pdf',size:4}]
@@ -106,7 +106,7 @@ test('file-list sharing preserves the click gesture for single files and prepare
  const files=[{path:'/a',name:'a.pdf',expiresAt:Date.now()+60000},{path:'/b',name:'b.pdf',expiresAt:Date.now()+60000}]
  const state={sharing:{value:false},preparing:{value:false},retrying:{value:false},error:{value:''},bundle:{value:null},selected:{value:['/a']},files:{value:files}}
  let shared=0,packed=0
- const bindings={...state,identity:'',visible:true,alive:true,bundleKey,resolveExportSelection,listExportFiles:()=>files,refresh(){},discardBundle(){},clearBundle(){state.bundle.value=null},
+ const bindings={...state,identity:'',visible:true,alive:true,bundleKey,retainBundle,resolveExportSelection,listExportFiles:()=>files,refresh(){},discardBundle(){},clearBundle(){state.bundle.value=null},
   async createFileBundle(){packed++;return{path:'/bundle'+packed,extension:'zip',expiresAt:Date.now()+60000}},shareSavedFile(file){shared++;assert.ok(['/a','/bundle1'].includes(file.path));return Promise.resolve()}}
  const share=new Function(...Object.keys(bindings),source+';return share')(...Object.values(bindings))
  try{
@@ -121,4 +121,35 @@ test('bundle refuses expired or missing files and cleans partially written archi
  await assert.rejects(createFileBundle([{path:'/a',expiresAt:Date.now()-1},{path:'/a',expiresAt:Date.now()+10000}],platform),/过期/)
  await assert.rejects(createFileBundle([{path:'/a',expiresAt:Date.now()+10000},{path:'/missing',expiresAt:Date.now()+10000}],platform),/打包失败/)
  assert.deepEqual([...platform.files.keys()],['/a'])
+})
+test('incomplete ZIP writes are rejected and never handed to the share flow',async()=>{
+ const platform=memoryPlatform({'/a':'A','/b':'B'}),fs=platform.getFileSystemManager(),stat=fs.stat
+ fs.stat=o=>stat({...o,success:r=>o.success({stats:{size:r.stats.size-(o.path.includes('/dengke-bundle-')?1:0)}})})
+ platform.getFileSystemManager=()=>fs
+ await assert.rejects(createFileBundle([{path:'/a',expiresAt:Date.now()+60000},{path:'/b',expiresAt:Date.now()+60000}],platform),/写入不完整/)
+ assert.deepEqual([...platform.files.keys()],['/a','/b'])
+})
+test('ZIP remains readable after callback while hidden, after selection cleanup and page unload',async()=>{
+ const oldUni=globalThis.uni;let toast
+ globalThis.uni={showToast(o){toast=o.title}}
+ const platform=memoryPlatform({'/a':'synthetic A','/b':'synthetic B'})
+ const files=[{path:'/a',name:'a.pdf',expiresAt:Date.now()+60000},{path:'/b',name:'b.pdf',expiresAt:Date.now()+60000}]
+ const packed=await createFileBundle(files,platform)
+ const expected=Buffer.from(platform.files.get(packed.path)),state={sharing:{value:false},preparing:{value:false},retrying:{value:false},error:{value:''},bundle:{value:packed},selected:{value:['/a','/b']},files:{value:files}}
+ let resolveNative,handedPath
+ let source=await readFile(new URL('../frontend/src/pages/pdf/exports.vue',import.meta.url),'utf8')
+ source=source.slice(source.indexOf('async function share(){'),source.indexOf('</script>')).replace(/\/\/ #ifdef H5[\s\S]*?\/\/ #endif/g,'')
+ const clearBundle=()=>{discardBundle(state.bundle.value,platform);state.bundle.value=null}
+ const bindings={...state,identity:bundleKey(files),visible:false,alive:true,bundleKey,retainBundle,resolveExportSelection,listExportFiles:()=>files,refresh(){},discardBundle,clearBundle,
+  createFileBundle(){assert.fail('prepared ZIP must be reused')},shareSavedFile(file){handedPath=file.path;return new Promise(resolve=>{resolveNative=resolve})}}
+ const share=new Function(...Object.keys(bindings),source+';return share')(...Object.values(bindings))
+ try{
+  const pending=share();assert.equal(handedPath,packed.path)
+  resolveNative();await pending
+  assert.equal(state.bundle.value,null);assert.deepEqual(platform.files.get(handedPath),expected)
+  // WeChat can read again after its callback; later cleanup must still not unlink this archive.
+  discardBundle(packed,platform);assert.deepEqual(platform.files.get(handedPath),expected)
+  assert.equal(toast,'已交给微信发送')
+  const unused=await createFileBundle(files,platform);discardBundle(unused,platform);assert.equal(platform.files.has(unused.path),false)
+ }finally{globalThis.uni=oldUni}
 })

@@ -24,7 +24,7 @@ import {headerPadding} from '../../lib/layout'
 import {onTabItemTap,onShow,onHide,onUnload} from '@dcloudio/uni-app'
 import {listExportFiles,resolveExportSelection,toggleExportSelection,pendingDownloads,completeDownloads,rememberExport} from '../../lib/pdf-export-history'
 import {downloadBatch} from '../../lib/pdf-batch'
-import {createFileBundle,discardBundle,bundleKey} from '../../lib/pdf-file-bundle'
+import {createFileBundle,discardBundle,retainBundle,bundleKey} from '../../lib/pdf-file-bundle'
 import {shareSavedFile,savePdf} from '../../lib/pdf-api'
 onShow(refreshBannerVip)
 onTabItemTap(()=>nextTick(()=>uni.pageScrollTo({scrollTop:0,duration:0})))
@@ -79,8 +79,9 @@ async function share(){
  sharing.value=true
  try{
   // Invoke the native chooser during this tap; file preparation requires a separate tap.
-  await shareSavedFile(chosen.length===1?chosen[0]:bundle.value)
-  uni.showToast({title:'转发成功',icon:'none'})
+  const file=chosen.length===1?chosen[0]:retainBundle(bundle.value)
+  await shareSavedFile(file)
+  uni.showToast({title:'已交给微信发送',icon:'none'})
  }catch(e){if(!e.cancelled)error.value=e.message}finally{sharing.value=false;if(!visible)clearBundle()}
  // #endif
 }
