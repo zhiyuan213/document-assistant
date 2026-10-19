@@ -38,7 +38,20 @@
       <button class="ui-button pdf-primary" :disabled="!selected.length || watermarkBusy || (tool.id==='remove-watermark' && !marksReady)" @click="run">{{tool.id==='remove-watermark'?'确认去除并生成新 PDF':'开始'+(tool.id==='merge'?'合并':tool.id==='split'?'拆分':'处理')}}</button>
       <view class="pdf-tip">文件仅用于本次处理，结果 30 分钟后自动删除。请及时保存到手机。密码不写入数据库。</view>
     </template>
-    <view v-else-if="busy" class="processing"><image src="/static/brand/pdf-cat.png" mode="aspectFit"/><view class="progress-circle">{{ stagePercent === 0 ? '上传中' : stagePercent+'%' }}</view><view class="intro-title">{{ stage }}</view><text class="muted">进度反映处理阶段，复杂文件请耐心等待</text><view class="pdf-tip">{{ selected[0]?.name }}<br/>请保持页面打开，处理后及时下载</view></view>
+    <view v-else-if="busy" class="processing">
+      <image class="processing-cat" src="/static/brand/pdf-cat.png" mode="aspectFit"/>
+      <view class="progress-card">
+        <view class="progress-circle">
+          <view class="progress-half progress-right"><view class="progress-fill" :style="{transform:'rotate('+(-180+Math.min(stagePercent,50)*3.6)+'deg)'}"/></view>
+          <view class="progress-half progress-left"><view class="progress-fill" :style="{transform:'rotate('+(Math.max(stagePercent-50,0)*3.6)+'deg)'}"/></view>
+          <view class="progress-center"><view class="progress-number"><text>{{stagePercent}}</text><text class="progress-unit">%</text></view><text class="progress-caption">处理进度</text></view>
+        </view>
+        <view class="processing-title">{{stage}}</view>
+        <view class="processing-count">第 {{stageIndex}} / {{stageTotal}} 个文件</view>
+        <view class="processing-filename">{{stageName}}</view>
+      </view>
+      <view class="processing-note">复杂文件请耐心等待<br/>请保持页面打开，处理后及时下载</view>
+    </view>
     <view v-else class="result">
       <view class="success-mark">{{result.items.length?'✓':'!'}}</view><view class="intro-title">{{result.failures.length?'本批处理结束':'处理完成！'}}</view>
       <view class="muted">成功 {{result.items.length}} 个，失败 {{result.failures.length}} 个 · 结果保留30分钟</view>
@@ -62,6 +75,7 @@ import {createSmoothProgress} from '../../lib/pdf-progress'
 import {rememberExport,queueDownloads,completeDownloads} from '../../lib/pdf-export-history'
 import {pollPdfJob} from '../../lib/pdf-job'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),stagePercent=ref(0),stage=ref('正在上传文件…')
+const stageIndex=ref(1),stageTotal=ref(1),stageName=ref('')
 const progressAnimation=createSmoothProgress({onChange:value=>{stagePercent.value=value}})
 onHide(()=>progressAnimation.pause())
 onShow(()=>progressAnimation.resume())
@@ -137,13 +151,13 @@ function choose(){
 function move(i){if(watermarkBusy.value)return;selected.value.splice(i-1,0,selected.value.splice(i,1)[0])}
 function chooseWatermark(){uni.chooseImage({count:1,success:r=>{const f=r.tempFiles[0];if(f.size>20*1024*1024){error.value='水印图片不能超过20MB';return}watermarkFile.value={path:f.path,size:f.size,name:'watermark.'+(f.path.split('.').pop()||'png')}}})}
 async function run(){if(busy.value||watermarkBusy.value||!selected.value.length)return;if(tool.value.id==='remove-watermark'&&!marksReady.value)return;error.value='';if(tool.value.id==='encrypt'&&(password.value.length<6||password.value.length>64)){error.value='密码需为 6 至 64 位';uni.showToast({title:error.value,icon:'none'});return}if(tool.value.id==='encrypt'&&password.value!==confirmation.value){error.value='两次密码不一致';return}if(['merge','compare'].includes(tool.value.id)&&selected.value.length<2){error.value='请选择至少两个PDF';return}if(tool.value.id==='split'&&splitMode.value==='ranges'&&!ranges.value.trim()){error.value='请输入页码范围';return}
- busy.value=true;progressAnimation.start();stage.value='正在上传文件…'
+ busy.value=true;progressAnimation.start();stage.value='正在上传文件';stageIndex.value=1;stageTotal.value=selected.value.length;stageName.value=selected.value[0].name
  try{
   const options={...redactRegion.value,...cropMargins.value,signPage:signPage.value,signX:signX.value,signY:signY.value,signWidth:signWidth.value,pages:pages.value,angle:angle.value,start:startNumber.value,position:numberPosition.value,ranges:splitMode.value==='ranges'?ranges.value:'',orientation:orientation.value,format:format.value,text:watermark.value,password:password.value,compression:compression.value,imageOutput:imageOutput.value,watermarkMode:watermarkMode.value}
   const plans=Object.fromEntries(markFiles.value.map(plan=>[plan.path,{ids:[...plan.ids],proof:plan.proof}]))
   const batch=await runPdfBatch({tool:tool.value.id,title:tool.value.title,files:[...selected.value],options,imageFile:watermarkFile.value,watermarkPlans:plans,submit:submitPdf,active:()=>alive,
    poll:(id,onProgress)=>pollPdfJob(()=>pdfRequest('/jobs/'+id),{active:()=>alive,onProgress}),
-   onProgress:state=>{progressAnimation.update(state.progress,state.ceiling);stage.value=(state.phase==='uploading'?'正在上传 ':'正在处理 ')+(state.index+1)+' / '+state.total+'：'+state.name}})
+   onProgress:state=>{progressAnimation.update(state.progress,state.ceiling);stage.value=state.phase==='uploading'?'正在上传文件':'正在处理文件';stageIndex.value=state.index+1;stageTotal.value=state.total;stageName.value=state.name}})
   if(alive)await progressAnimation.finish()
   if(alive){result.value=batch;const completed=new Set(batch.items.flatMap(item=>item.sources));selected.value=selected.value.filter(file=>!completed.has(file.path))}
   options.password=''
@@ -172,5 +186,22 @@ function openTools(){uni.switchTab({url:'/pages/tools/index'})}
 <style scoped>
 .mark-option{padding:20rpx 0;border-bottom:1rpx solid #e5edf7;font-size:26rpx}.mark-previews{display:flex;gap:12rpx}.mark-previews image{width:48%;background:#f4f6fa}
 
-.pdf-work{background:#f6f9fe}.intro{display:grid;grid-template-columns:84rpx minmax(0,1fr);gap:6rpx 20rpx;align-items:center;padding:24rpx 0 28rpx}.intro-icon{grid-row:1/3}.intro-title{font-size:36rpx;font-weight:700;line-height:1.4;color:#172b4d}.intro>text{grid-column:2;font-size:26rpx;line-height:1.7;color:#73839b}.upload-box{background:#fff;border:2rpx dashed #c5d8f3;border-radius:20rpx;padding:34rpx 20rpx;text-align:center}.cloud-upload{font-size:48rpx;color:#246bfd;line-height:1.2}.upload-name{font-size:28rpx;font-weight:600;margin:16rpx 0 8rpx;color:#246bfd}.upload-box>text{font-size:24rpx;color:#73839b}.input-file{display:flex;align-items:center;gap:14rpx;background:#fff;border:1rpx solid #e5edf7;border-radius:16rpx;padding:16rpx;margin-top:16rpx;font-size:26rpx}.input-file image{width:58rpx;height:66rpx;border-radius:8rpx}.file-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4rpx}.file-info>text:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-control{display:flex;align-items:center;justify-content:center;width:64rpx;height:72rpx;flex-shrink:0;margin:0;padding:0;background:transparent;font-size:34rpx;color:#73839b}.options{padding:24rpx;background:#fff;border:1rpx solid #e5edf7;border-radius:20rpx;margin-top:24rpx}.option-title{font-size:28rpx;font-weight:600;margin-bottom:14rpx}.options input{box-sizing:border-box;width:100%;height:88rpx;padding:20rpx;border:1rpx solid #dfe8f4;border-radius:14rpx;background:#fbfcff;margin-top:12rpx;font-size:28rpx;color:#172b4d}.options label{display:flex;align-items:center;min-height:76rpx;padding:8rpx 0;font-size:28rpx}.options>view>text{font-size:26rpx;color:#73839b}.choices{display:flex;gap:12rpx;margin-top:14rpx}.choices text{display:flex;align-items:center;justify-content:center;flex:1;padding:16rpx 8rpx;min-height:80rpx;text-align:center;background:#f3f6fb;border:1rpx solid transparent;border-radius:12rpx;font-size:26rpx;color:#73839b}.choices .active{background:#edf4ff;border-color:#246bfd;color:#246bfd}.free-tip{text-align:center;font-size:24rpx;color:#73839b;margin:24rpx 0 0}.pdf-tip{background:#eaf2ff;color:#627b9c;line-height:1.8;padding:20rpx 24rpx;border-radius:16rpx;font-size:24rpx;margin-top:20rpx}.decrypt-link{color:#246bfd;display:block;margin-top:8rpx;min-height:48rpx}.processing,.result{text-align:center;padding-top:32rpx}.processing image{width:144rpx;height:144rpx}.progress-circle{width:200rpx;height:200rpx;border:12rpx solid #e1ebfc;border-top-color:#246bfd;border-right-color:#246bfd;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40rpx;font-weight:700;color:#246bfd;margin:24rpx auto}.processing .intro-title,.result .intro-title{margin:24rpx 0 12rpx}.success-mark{margin:32rpx auto;width:128rpx;height:128rpx;line-height:128rpx;border-radius:50%;background:#eaf2ff;color:#246bfd;font-size:64rpx}.result-file{display:flex;align-items:center;gap:20rpx;text-align:left;background:#fff;border:1rpx solid #e5edf7;border-radius:20rpx;padding:24rpx;margin:28rpx 0;font-size:28rpx}.result-file>view{min-width:0;word-break:break-word}.error-message{color:#b54747;background:#fff0f0;line-height:1.7;font-size:26rpx;padding:20rpx 24rpx;border-radius:16rpx;margin:20rpx 0}
+.pdf-work{background:#f6f9fe}.intro{display:grid;grid-template-columns:84rpx minmax(0,1fr);gap:6rpx 20rpx;align-items:center;padding:24rpx 0 28rpx}.intro-icon{grid-row:1/3}.intro-title{font-size:36rpx;font-weight:700;line-height:1.4;color:#172b4d}.intro>text{grid-column:2;font-size:26rpx;line-height:1.7;color:#73839b}.upload-box{background:#fff;border:2rpx dashed #c5d8f3;border-radius:20rpx;padding:34rpx 20rpx;text-align:center}.cloud-upload{font-size:48rpx;color:#246bfd;line-height:1.2}.upload-name{font-size:28rpx;font-weight:600;margin:16rpx 0 8rpx;color:#246bfd}.upload-box>text{font-size:24rpx;color:#73839b}.input-file{display:flex;align-items:center;gap:14rpx;background:#fff;border:1rpx solid #e5edf7;border-radius:16rpx;padding:16rpx;margin-top:16rpx;font-size:26rpx}.input-file image{width:58rpx;height:66rpx;border-radius:8rpx}.file-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4rpx}.file-info>text:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-control{display:flex;align-items:center;justify-content:center;width:64rpx;height:72rpx;flex-shrink:0;margin:0;padding:0;background:transparent;font-size:34rpx;color:#73839b}.options{padding:24rpx;background:#fff;border:1rpx solid #e5edf7;border-radius:20rpx;margin-top:24rpx}.option-title{font-size:28rpx;font-weight:600;margin-bottom:14rpx}.options input{box-sizing:border-box;width:100%;height:88rpx;padding:20rpx;border:1rpx solid #dfe8f4;border-radius:14rpx;background:#fbfcff;margin-top:12rpx;font-size:28rpx;color:#172b4d}.options label{display:flex;align-items:center;min-height:76rpx;padding:8rpx 0;font-size:28rpx}.options>view>text{font-size:26rpx;color:#73839b}.choices{display:flex;gap:12rpx;margin-top:14rpx}.choices text{display:flex;align-items:center;justify-content:center;flex:1;padding:16rpx 8rpx;min-height:80rpx;text-align:center;background:#f3f6fb;border:1rpx solid transparent;border-radius:12rpx;font-size:26rpx;color:#73839b}.choices .active{background:#edf4ff;border-color:#246bfd;color:#246bfd}.free-tip{text-align:center;font-size:24rpx;color:#73839b;margin:24rpx 0 0}.pdf-tip{background:#eaf2ff;color:#627b9c;line-height:1.8;padding:20rpx 24rpx;border-radius:16rpx;font-size:24rpx;margin-top:20rpx}.decrypt-link{color:#246bfd;display:block;margin-top:8rpx;min-height:48rpx}.processing,.result{text-align:center;padding-top:32rpx}.processing .intro-title,.result .intro-title{margin:24rpx 0 12rpx}.success-mark{margin:32rpx auto;width:128rpx;height:128rpx;line-height:128rpx;border-radius:50%;background:#eaf2ff;color:#246bfd;font-size:64rpx}.result-file{display:flex;align-items:center;gap:20rpx;text-align:left;background:#fff;border:1rpx solid #e5edf7;border-radius:20rpx;padding:24rpx;margin:28rpx 0;font-size:28rpx}.result-file>view{min-width:0;word-break:break-word}.error-message{color:#b54747;background:#fff0f0;line-height:1.7;font-size:26rpx;padding:20rpx 24rpx;border-radius:16rpx;margin:20rpx 0}
+
+.processing{padding-top:28rpx}
+.processing-cat{display:block;width:120rpx;height:120rpx;margin:0 auto -10rpx;position:relative;z-index:1}
+.progress-card{background:#fff;border:1rpx solid #e6eefb;border-radius:32rpx;padding:40rpx 28rpx 28rpx;box-shadow:0 16rpx 48rpx rgba(36,107,253,.06)}
+.progress-circle{position:relative;width:252rpx;height:252rpx;margin:0 auto 28rpx;border-radius:50%;background:#e7effd}
+.progress-half{position:absolute;top:0;width:50%;height:100%;overflow:hidden}
+.progress-right{right:0}.progress-left{left:0}
+.progress-fill{position:absolute;top:0;width:252rpx;height:252rpx;border-radius:50%;background:linear-gradient(to right,transparent 50%,#246bfd 50%)}
+.progress-right .progress-fill{right:0}.progress-left .progress-fill{left:0}
+.progress-center{position:absolute;top:12rpx;right:12rpx;bottom:12rpx;left:12rpx;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.progress-number{display:flex;align-items:baseline;justify-content:center;color:#246bfd;font-size:64rpx;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.progress-unit{font-size:30rpx;margin-left:4rpx;font-weight:600}
+.progress-caption{margin-top:16rpx;font-size:22rpx;line-height:1;color:#8999b1}
+.processing-title{font-size:34rpx;font-weight:700;line-height:1.4;color:#172b4d}
+.processing-count{display:inline-block;margin-top:14rpx;padding:6rpx 20rpx;border-radius:24rpx;background:#edf4ff;color:#4876c0;font-size:24rpx;line-height:1.5}
+.processing-filename{margin-top:24rpx;padding-top:22rpx;border-top:1rpx solid #edf1f8;font-size:25rpx;line-height:1.7;color:#647893;word-break:break-all;text-align:left}
+.processing-note{margin-top:26rpx;color:#8999b1;font-size:24rpx;line-height:1.8}
 </style>
