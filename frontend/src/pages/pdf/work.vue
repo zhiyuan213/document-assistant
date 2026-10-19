@@ -36,7 +36,18 @@
       <view class="pdf-tip">文件仅用于本次处理，结果 30 分钟后自动删除。请及时保存到手机。密码不写入数据库。</view>
     </template>
     <view v-else-if="busy" class="processing"><image src="/static/brand/pdf-cat.png" mode="aspectFit"/><view class="progress-circle">{{ stagePercent === 0 ? '上传中' : stagePercent+'%' }}</view><view class="intro-title">{{ stage }}</view><text class="muted">进度反映处理阶段，复杂文件请耐心等待</text><view class="pdf-tip">{{ selected[0]?.name }}<br/>请保持页面打开，处理后及时下载</view></view>
-    <view v-else class="result"><view class="success-mark">✓</view><view class="intro-title">处理完成！</view><view class="muted">结果可下载，30 分钟后自动删除</view><view class="result-file"><PdfIcon :label="result.extension.toUpperCase()" :color="tool.color"/><view><text>登科喵结果.{{result.extension}}</text><view class="muted">{{size(result.size_bytes)}}</view></view></view><button class="ui-button pdf-primary" :loading="saving" @click="save">下载文件</button><button v-if="preparedFile" class="ui-button pdf-primary" @click="openPrepared">{{['zip','txt'].includes(preparedFile.extension)?'发送 / 保存到微信':'打开文件'}}</button><view v-if="preparedFile" class="muted">{{preparedFile.extension==='txt'?'可发送到文件传输助手，再打开或保存TXT文件':preparedFile.extension==='zip'?'可发送到文件传输助手，再保存或解压':'打开后使用右上角菜单保存或分享'}}</view><button class="ui-button ui-button-secondary pdf-secondary" @click="again">再处理一个</button><button class="ui-button ui-button-secondary pdf-secondary" @click="openTools">转换其他格式</button></view>
+    <view v-else class="result">
+      <view class="success-mark">✓</view><view class="intro-title">处理完成！</view><view class="muted">结果可下载，30 分钟后自动删除</view>
+      <view class="result-file"><PdfIcon :label="result.extension.toUpperCase()" :color="tool.color"/><view><text>登科喵结果.{{result.extension}}</text><view class="muted">{{size(result.size_bytes)}}</view></view></view>
+      <button class="ui-button pdf-primary" :loading="saving" :disabled="saving || sharing" @click="save">下载文件</button>
+      <!-- #ifdef MP-WEIXIN -->
+      <button class="ui-button ui-button-secondary pdf-secondary" :loading="sharing" :disabled="saving || sharing" @click="forwardResult">转发给微信好友</button>
+      <!-- #endif -->
+      <button v-if="preparedFile && !['zip','txt'].includes(preparedFile.extension)" class="ui-button pdf-primary" :disabled="saving || sharing" @click="openPrepared">打开文件</button>
+      <view v-if="preparedFile" class="muted">{{preparedFile.extension==='txt'?'可转发到文件传输助手，再打开或保存TXT文件':preparedFile.extension==='zip'?'可转发到文件传输助手，再保存或解压':'可直接转发文件，或打开后使用右上角菜单保存'}}</view>
+      <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving || sharing" @click="again">再处理一个</button>
+      <button class="ui-button ui-button-secondary pdf-secondary" :disabled="saving || sharing" @click="openTools">转换其他格式</button>
+    </view>
   </view>
 </template>
 <script setup>
@@ -45,7 +56,7 @@ import {onLoad,onUnload,onShareAppMessage,onAddToFavorites} from '@dcloudio/uni-
 import PdfIcon from '../../components/PdfIcon.vue'
 import PdfActions from '../../components/PdfActions.vue'
 import {pdfTools,favorites,toggleFavorite,pdfShare} from '../../lib/pdf-tools'
-import {pdfRequest,submitPdf,savePdf,openSavedPdf} from '../../lib/pdf-api'
+import {pdfRequest,submitPdf,savePdf,openSavedPdf,shareSavedFile} from '../../lib/pdf-api'
 import {rememberExport} from '../../lib/pdf-export-history'
 import {pollPdfJob} from '../../lib/pdf-job'
 const tool=ref(pdfTools[0]), selected=ref([]), liked=ref(false), busy=ref(false), result=ref(null), error=ref(''),saving=ref(false),stagePercent=ref(0),stage=ref('正在上传文件…')
@@ -54,6 +65,7 @@ const cropMargins=ref({left:'5',right:'5',top:'5',bottom:'5'}),cropEdges=[{id:'l
 const signPage=ref('1'),signX=ref('60'),signY=ref('60'),signWidth=ref('25')
 const redactRegion=ref({redactX:'10',redactY:'10',redactWidth:'30',redactHeight:'10'}),redactFields=[{id:'redactX',title:'从左'},{id:'redactY',title:'从上'},{id:'redactWidth',title:'宽度'},{id:'redactHeight',title:'高度'}]
 const preparedFile=ref(null)
+const sharing=ref(false)
 const previewPaths=[]
 function clearPreviewFiles(){
  // #ifdef MP-WEIXIN
@@ -113,6 +125,16 @@ async function run(){if(busy.value||watermarkBusy.value)return;if(tool.value.id=
  }catch(e){error.value=e.message;if(e.status===402)uni.navigateTo({url:'/pages/pdf/credits'})}finally{busy.value=false}}
 async function save(){if(saving.value)return;saving.value=true;error.value='';try{preparedFile.value=rememberExport(await savePdf(result.value),{name:tool.value.title+'.'+result.value.extension,expiresAt:result.value.expiresAt||result.value.expires_at,inputTokens:0,outputTokens:0})||null;if(preparedFile.value)uni.showToast({title:'已下载，请点击下方打开或发送',icon:'none'})}catch(e){error.value=e.message||'下载失败，请重试'}finally{saving.value=false}}
 function openPrepared(){error.value='';openSavedPdf(preparedFile.value).catch(e=>{if(!e.cancelled)error.value=e.message})}
+function forwardResult(){
+ if(saving.value||sharing.value)return
+ error.value=''
+ if(!preparedFile.value){
+  return save().then(()=>{if(preparedFile.value)uni.showToast({title:'文件已准备好，请再次点击转发',icon:'none'})})
+ }
+ sharing.value=true
+ // Invoke the native friend chooser directly from this tap, without awaiting a download.
+ return shareSavedFile(preparedFile.value).then(()=>uni.showToast({title:'转发成功',icon:'none'})).catch(e=>{if(!e.cancelled)error.value=e.message}).finally(()=>{sharing.value=false})
+}
 function again(){result.value=null;preparedFile.value=null;error.value=''}
 function openTools(){uni.switchTab({url:'/pages/tools/index'})}
 </script>
