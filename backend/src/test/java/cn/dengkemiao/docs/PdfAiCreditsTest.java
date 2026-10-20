@@ -241,6 +241,41 @@ class PdfAiCreditsTest {
         db.update("UPDATE pdf_translation_job SET expires_at=? WHERE id=?",Timestamp.valueOf(PdfAiCredits.now().minusMinutes(1)),id);
         mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format","pdf").header("Authorization","Bearer "+token)).andExpect(status().isNotFound());
     }
+    @Test void longDocumentTranslationIgnoresGeneric15000LimitAndExportsEveryPage()throws Exception {
+        byte[] input;
+        try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var out=new java.io.ByteArrayOutputStream()){
+            for(int page=0;page<4;page++){
+                var p=new org.apache.pdfbox.pdmodel.PDPage();doc.addPage(p);
+                try(var stream=new org.apache.pdfbox.pdmodel.PDPageContentStream(doc,p)){
+                    stream.beginText();stream.setFont(new org.apache.pdfbox.pdmodel.font.PDType1Font(org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName.HELVETICA),8);stream.newLineAtOffset(30,760);
+                    for(int line=0;line<50;line++){stream.showText("Synthetic paragraph contains complete fictional data for translation testing. Marker"+page+"x"+line+".");stream.newLineAtOffset(0,-14);}
+                    stream.endText();
+                }
+            }
+            doc.save(out);input=out.toByteArray();
+        }
+        try(var doc=org.apache.pdfbox.Loader.loadPDF(input)){assertTrue(new org.apache.pdfbox.text.PDFTextStripper().getText(doc).length()>15000);}
+        String token=json.readTree(mvc.perform(post("/api/pdf/visitor")).andReturn().getResponse().getContentAsString()).path("token").asText();
+        when(model.enabled()).thenReturn(true);var calls=new java.util.concurrent.atomic.AtomicInteger();
+        when(model.complete(anyString(),anyString(),anyInt(),eq(true))).thenAnswer(invocation->{
+            calls.incrementAndGet();String request=invocation.getArgument(1);var regions=json.readTree(request.substring(request.lastIndexOf("\n[")+1));var rows=new ArrayList<Map<String,Object>>();int characters=0;
+            for(var region:regions){String source=region.path("text").asText();characters+=source.length();rows.add(Map.of("id",region.path("id").asInt(),"text","Translated "+source));}
+            assertTrue(characters<=1000,"Model calls must remain bounded batches");
+            return new DeepSeekService.Result(json.writeValueAsString(Map.of("translations",rows)),20,30);
+        });
+        org.springframework.test.util.ReflectionTestUtils.setField(ai,"testMode",true);
+        try{
+            var file=new org.springframework.mock.web.MockMultipartFile("files","synthetic-long.pdf","application/pdf",input);
+            var estimate=json.readTree(mvc.perform(multipart("/api/pdf/ai/estimate").file(file).param("mode","translate").param("targetLanguage","en").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());assertEquals(4,estimate.path("pages").asInt());
+            var start=json.readTree(mvc.perform(multipart("/api/pdf/ai").file(file).param("mode","translate").param("targetLanguage","en").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());String id=start.path("translationJobId").asText();
+            com.fasterxml.jackson.databind.JsonNode result=null;
+            for(int i=0;i<200;i++){result=json.readTree(mvc.perform(get("/api/pdf/ai/translations/"+id).header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());if(!Set.of("queued","processing").contains(result.path("status").asText()))break;Thread.sleep(30);}
+            assertEquals("completed",result.path("status").asText(),result.toString());assertTrue(calls.get()>1);
+            assertTrue(result.path("answer").asText().contains("Marker3x49"));
+            byte[] exported=mvc.perform(get("/api/pdf/ai/translations/"+id+"/file").param("format","pdf").header("Authorization","Bearer "+token)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+            try(var doc=org.apache.pdfbox.Loader.loadPDF(exported)){assertEquals(4,doc.getNumberOfPages());String text=new org.apache.pdfbox.text.PDFTextStripper().getText(doc);assertTrue(text.contains("Marker3x49"));assertEquals(200,text.split("Marker",-1).length-1);}
+        }finally{org.springframework.test.util.ReflectionTestUtils.setField(ai,"testMode",false);}
+    }
     private byte[] samplePdf() throws Exception {
         try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var out=new java.io.ByteArrayOutputStream()) {
             var page=new org.apache.pdfbox.pdmodel.PDPage();doc.addPage(page);

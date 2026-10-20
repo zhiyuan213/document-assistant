@@ -164,7 +164,7 @@ function applyResult(result,file=uni.getStorageSync(translationContextKey)?.file
 }
 function continueBatch(){if(busy.value||exporting.value)return;if(!status.value.canUse){openCredits();return}selected.value=[...remainingFiles.value];remainingFiles.value=[];stopReason.value='';return run(true)}
 async function waitTranslation(id){
- for(let i=0;i<180;i++){
+ for(let i=0;i<420;i++){
   if(!alive)throw Object.assign(new Error('翻译仍在后台处理，可重新进入页面恢复'),{uncertain:true})
   if(i)await new Promise(resolve=>setTimeout(resolve,5000))
   const state=await pdfRequest('/ai/translations/'+encodeURIComponent(id))

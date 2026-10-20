@@ -37,6 +37,7 @@ public class PdfAiController {
     @Value("${PDF_AI_MAX_PAGES:30}") private int maxPages;
     @Value("${PDF_AI_MAX_SCAN_PAGES:5}") private int maxScanPages;
     @Value("${PDF_AI_MAX_INPUT_CHARS:15000}") private int maxInputChars;
+    @Value("${PDF_TRANSLATION_MAX_INPUT_CHARS:200000}") private int maxTranslationChars=200000;
     @Value("${PDF_AI_MAX_OUTPUT_TOKENS:1500}") private int maxOutputTokens;
 
     public PdfAiController(JdbcTemplate db, PlatformTransactionManager manager, DeepSeekService deepseek, PdfAiCredits credits, AiReportExport reports, PdfLayoutTranslation translation, PdfTranslationJobs translationJobs) {
@@ -165,7 +166,7 @@ public class PdfAiController {
         Map.entry("zh-CN","简体中文"),Map.entry("zh-TW","繁体中文"),Map.entry("en","英语"),Map.entry("ja","日语"),Map.entry("ko","韩语"),Map.entry("fr","法语"),Map.entry("de","德语"),Map.entry("es","西班牙语"),Map.entry("pt","葡萄牙语"),Map.entry("ru","俄语"),Map.entry("ar","阿拉伯语"),Map.entry("it","意大利语"));
     private PdfLayoutTranslation.Plan translationPlan(byte[] bytes)throws Exception {
         if(!inspections.tryAcquire())throw new ApiError(429,"文档检查繁忙，请稍后重试");
-        try{return translation.inspect(bytes,Math.min(30,Math.max(1,maxPages)),Math.min(5,Math.max(1,maxScanPages)),boundedInputChars());}
+        try{return translation.inspect(bytes,Math.min(30,Math.max(1,maxPages)),Math.min(5,Math.max(1,maxScanPages)),boundedTranslationChars());}
         finally{inspections.release();}
     }
     private Map<String,Object> startTranslation(String owner,String language,String extra,byte[] bytes,String requestId)throws Exception {
@@ -400,6 +401,7 @@ public class PdfAiController {
     private static LocalDate today() { return LocalDate.now(ZoneId.of("Asia/Shanghai")); }
     private long boundedMonthlyCredits() { return credits.monthlyCap(); }
     private int boundedDailyLimit() { return Math.min(100, Math.max(0, dailyLimit)); }
+    private int boundedTranslationChars() { return Math.min(500000,Math.max(20000,maxTranslationChars)); }
     private int boundedInputChars() { return Math.min(15000, Math.max(1000, maxInputChars)); }
     private int outputCeiling(String mode) { return (mode.equals("mindmap")||mode.equals("ppt"))?4096:boundedOutputTokens(); }
     private int boundedOutputTokens() { return Math.min(1500, Math.max(256, maxOutputTokens)); }
